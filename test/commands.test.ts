@@ -61,3 +61,34 @@ test('gate CMD runs CMD, while gate own verbs and bare flags run no command', ()
   expect(argv('gate -C /r run lint test')).toEqual(['gate -C /r run lint test'])
   expect(argv('gate --list')).toEqual(['gate --list'])
 })
+
+test('a task runner call reads the recipe the caller kept under its key', () => {
+  const key = (file: string, target: string) => `${file}#${target}`
+  const run = (command: string, files: Record<string, string>) => withFiles(command, files)
+  const push = 'git push origin main'
+  expect(run('make ship', { [key('/s/Makefile', 'ship')]: push })).toContain(push)
+  expect(run('make', { [key('/s/Makefile', '')]: push })).toContain(push)
+  expect(run('make -C /r ship', { [key('/r/Makefile', 'ship')]: push })).toContain(push)
+  expect(run('make -j 4 -f b.mk ship', { [key('/s/b.mk', 'ship')]: push })).toContain(push)
+  expect(run('npm run ship', { [key('/s/package.json', 'ship')]: push })).toContain(push)
+  expect(run('npm test', { [key('/s/package.json', 'test')]: push })).toContain(push)
+  expect(run('bun run ship', { [key('/s/package.json', 'ship')]: push })).toContain(push)
+  expect(run('pnpm ship', { [key('/s/package.json', 'ship')]: push })).toContain(push)
+  expect(run('pnpm run ship', { [key('/s/package.json', 'ship')]: push })).toContain(push)
+  expect(run('yarn --silent ship', { [key('/s/package.json', 'ship')]: push })).toContain(push)
+  expect(run('just ship', { [key('/s/justfile', 'ship')]: push })).toContain(push)
+  // Controls: another target, a runner that reads no package script, and a recipe not kept.
+  expect(run('make build', { [key('/s/Makefile', 'ship')]: push })).toEqual(['make build'])
+  expect(run('bun ship', { [key('/s/package.json', 'ship')]: push })).toEqual(['bun ship'])
+  expect(run('npm install', { [key('/s/package.json', 'install')]: push })).toEqual(['npm install'])
+  expect(run('make ship', {})).toEqual(['make ship'])
+})
+
+test('the recipe call carries the file it was read from', () => {
+  const script = scriptOf('npm run ship', parse, undefined, {
+    files: new Map([['/s/package.json#ship', 'git push']]),
+    cwd: '/s',
+  }) as Script
+  const files = commandsOf(script, { cwd: '/s', home: '/h' }).map((c) => c.file)
+  expect(files).toContain('/s/package.json')
+})
