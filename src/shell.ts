@@ -2,6 +2,7 @@
 // and no spawning: the caller runs `shfmt --to-json` and passes each parse in.
 
 import { runnerPieces } from './runners.ts'
+import { fileScriptOf } from './scriptFile.ts'
 import { markExported, setsAllexport } from './shellExport.ts'
 import {
   BODY_LISTS,
@@ -37,7 +38,6 @@ import {
   recordWrittenScript,
   redirect,
   SHELLS,
-  scriptFileOf,
   shellFlags,
   srcOf,
   type W,
@@ -288,10 +288,9 @@ const builtin = (w: W, ctx: Ctx, call: Call) => {
 // The script a shell call runs: its -c string, a script file read from disk, else what it reads on
 // stdin; eval's arguments.
 const scriptRun = (w: W, call: Call, own: Redirect[], ctx: Ctx): Piece | undefined => {
-  const file = scriptFileOf(call, w.opts.cwd)
-  const read = file === undefined ? undefined : w.script.files?.get(file)
-  if (read !== undefined) {
-    return { text: read, base: undefined, file }
+  const run = fileScriptOf(w, call)
+  if (run) {
+    return run
   }
   const args = call.argv.slice(1)
   if (call.name === 'eval') {
