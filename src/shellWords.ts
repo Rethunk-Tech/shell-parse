@@ -352,6 +352,8 @@ const skipOptions = (words: Word[], from: number, values: string[], env?: Map<st
   return j
 }
 // The command a wrapper chain (sudo, env, timeout, xargs, ...) finally runs, and the wrappers.
+// A tool word: `node@20`, `npm:prettier@latest`.
+const TOOL_WORD = /^[^-\s][^\s@]*@\S+$/u
 // Where a wrapper's own words end and its command starts, or -1 when it runs none.
 const commandAt = (
   words: Word[],
@@ -367,8 +369,18 @@ const commandAt = (
     }
     start = sub + 1
   }
-  const dashes = spec.dashes ? words.findIndex((w, k) => k >= start && w.value === '--') : -1
-  return dashes >= 0 ? dashes + 1 : skipOptions(words, start, spec.values, env) + (spec.lead ?? 0)
+  let end = skipOptions(words, start, spec.values, env)
+  const first = end
+  while (spec.tools && TOOL_WORD.test(words[end]?.value ?? '')) {
+    end += 1
+  }
+  if (words[end]?.value === '--' && end > first) {
+    return end + 1
+  }
+  // With no tool word named, a `--` further on may follow a bare tool name (`mise exec node -- cmd`).
+  const dashes =
+    spec.dashes && end === first ? words.findIndex((w, k) => k >= start && w.value === '--') : -1
+  return dashes >= 0 ? dashes + 1 : end + (spec.lead ?? 0)
 }
 export const peel = (words: Word[]) => {
   const wrappers: Wrapper[] = []

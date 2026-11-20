@@ -45,6 +45,8 @@ export interface Recipe {
   cwd: string
   // Text make reads before any file (--eval).
   evals: string[]
+  // The workspace a package manager's -w / --filter names (a package name or path), whose package.json holds the script.
+  workspace?: string
   key: string
 }
 const MAKES = new Set(['make', 'gmake'])
@@ -69,7 +71,8 @@ const recipe = (
     up: where.up ?? false,
     cwd: where.cwd ?? dir,
     evals,
-    key: `${file}#${target}${extra.length > 0 ? `#${extra.join(',')}` : ''}`,
+    ...(where.workspace === undefined ? {} : { workspace: where.workspace }),
+    key: `${file}#${target}${extra.length > 0 ? `#${extra.join(',')}` : ''}${where.workspace === undefined ? '' : `@${where.workspace}`}`,
   }
 }
 const MAKE_VAR_WORD = /^(?<name>[A-Za-z_][\w.-]*)=/u
@@ -200,6 +203,7 @@ const NPM_VALUE_FLAGS: Record<string, string[]> = {
   bun: ['--cwd', '--filter', '-c', '--config', '--env-file', '--preload', '-r', '--registry'],
 }
 const NPM_DIR_FLAGS = new Set(['--prefix', '-C', '--dir', '--cwd'])
+const NPM_WORKSPACE_FLAGS = new Set(['-w', '--workspace', '--filter', '-F'])
 const NPM_RUN = new Set(['run', 'run-script', 'rum', 'urn'])
 // The scripts a package manager runs besides the one named, for the verbs that run a package's lifecycle.
 const NPM_LIFECYCLE_VERBS: Record<string, string[]> = {
@@ -240,11 +244,15 @@ const BUN_COMMANDS = new Set(
 // A package manager's leading options: where they point it, and the words from its command on.
 const npmOptions = (name: string, words: string[], dir: string) => {
   let where = dir
+  const workspaces: string[] = []
   let i = 0
   const valued = NPM_VALUE_FLAGS[name] ?? []
   while (i < words.length && words[i]?.startsWith('-')) {
     const [flag = '', attached] = (words[i] ?? '').split('=')
     if (valued.includes(flag)) {
+      if (NPM_WORKSPACE_FLAGS.has(flag) && (attached ?? words[i + 1]) !== undefined) {
+        workspaces.push(attached ?? words[i + 1] ?? '')
+      }
       where = NPM_DIR_FLAGS.has(flag)
         ? (joinPath(where, attached ?? words[i + 1] ?? '') ?? where)
         : where
@@ -253,7 +261,7 @@ const npmOptions = (name: string, words: string[], dir: string) => {
       i += 1
     }
   }
-  return { where, words: words.slice(i) }
+  return { where, workspaces, words: words.slice(i) }
 }
 // The scripts a package manager command runs.
 const npmTargets = (name: string, [head, ...rest]: string[]) => {
@@ -281,7 +289,11 @@ const npmRecipes = (name: string, words: string[], dir: string): Recipe[] => {
   const source = joinPath(opts.where, 'package.json')
   return source === undefined
     ? []
-    : [...new Set(npmTargets(name, opts.words))].map((t) => recipe('npm', source, t, { up: true }))
+    : [...new Set(npmTargets(name, opts.words))].flatMap((t) =>
+        (opts.workspaces.length > 0 ? opts.workspaces : [undefined]).map((workspace) =>
+          recipe('npm', source, t, { up: true, workspace }),
+        ),
+      )
 }
 // The recipes a task runner call runs, by the target words it names; none when a word is only known at run time.
 export const recipesOf = (call: Call, cwd: string | undefined): Recipe[] => {
@@ -318,4 +330,32 @@ export const fileScriptOf = (w: W, call: Call): Piece | undefined => {
   return texts.length > 0
     ? { text: texts.join('\n'), base: undefined, file: found[0]?.file }
     : undefined
+}
+// The patterns a workspace root lists: package.json `workspaces` (an array, or `{packages}`) and
+// pnpm-workspace.yaml `packages:`. `!` exclusions are dropped.
+const PNPM_PACKAGES = /^packages:[ \t]*\n(?<body>(?:[ \t]+-.*\n?|[ \t]*#.*\n?|[ \t]*\n)*)/mu
+const PNPM_ITEM = /^[ \t]+-[ \t]*['"]?(?<p>[^'"#\n]+?)['"]?[ \t]*(?:#.*)?$/gmu
+export const workspacePatterns = (packageJson: string, pnpmYaml: string): string[] => {
+  let listed: unknown
+  try {
+    const parsed: unknown = JSON.parse(packageJson)
+    const ws = (parsed as { workspaces?: unknown } | null)?.workspaces
+    listed = Array.isArray(ws) ? ws : (ws as { packages?: unknown } | undefined)?.packages
+  } catch {
+    listed = undefined
+  }
+  const fromJson = Array.isArray(listed)
+    ? listed.filter((p): p is string => typeof p === 'string')
+    : []
+  const block = PNPM_PACKAGES.exec(pnpmYaml)?.groups?.body ?? ''
+  const fromYaml = [...block.matchAll(PNPM_ITEM)].map((m) => m.groups?.p ?? '')
+  return [...fromJson, ...fromYaml].filter((p) => p !== '' && !p.startsWith('!'))
+}
+const SELECTOR_DECOR = /^\.\.\.|\.\.\.$|^\.\/|\/$/gu
+const WORKSPACE_GLOB = /[*?[\]{}!]/u
+// Whether a package of this name or at this root-relative path is what a -w / --filter selector names.
+// `...name` and `name...` (pnpm's dependency selectors) name the package itself; a glob or exclusion names no one.
+export const selectsWorkspace = (selector: string, name: string | undefined, relDir: string) => {
+  const s = selector.replace(SELECTOR_DECOR, '')
+  return s !== '' && !WORKSPACE_GLOB.test(s) && (s === name || s === relDir)
 }

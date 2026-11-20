@@ -152,7 +152,31 @@ const toolPieces = (call: Call, args: Word[]): Piece[] => {
   if (call.name === 'fd' || call.name === 'fdfind') {
     return fdPieces(args)
   }
+  if (call.name === 'pnpm') {
+    return pnpmExecPieces(args)
+  }
   return call.name === 'gate' ? gatePieces(args) : []
+}
+const PNPM_VALUE_FLAG = new Set(['-C', '--dir', '--filter', '-F'])
+const PNPM_SHELL_MODE = new Set(['-c', '--shell-mode'])
+// `pnpm [opts] exec -c CMD...` runs its words through a shell.
+const pnpmExecPieces = (args: Word[]): Piece[] => {
+  let i = 0
+  while (args[i]?.value?.startsWith('-')) {
+    i += PNPM_VALUE_FLAG.has(args[i]?.value ?? '') ? 2 : 1
+  }
+  if (args[i]?.value !== 'exec') {
+    return []
+  }
+  const rest = args.slice(i + 1)
+  const at = rest.findIndex((a) => PNPM_SHELL_MODE.has(a.value ?? ''))
+  const words = at < 0 ? [] : rest.slice(at + 1)
+  const [only] = words
+  return [
+    words.length === 1 && only
+      ? only.script
+      : { text: words.map((w) => w.value ?? w.raw).join(' '), base: undefined },
+  ]
 }
 export const runnerPieces = (call: Call): Piece[] => {
   const args = call.argv.slice(1)

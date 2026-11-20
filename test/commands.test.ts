@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { fdExec } from '../src/runners.ts'
-import { recipesOf } from '../src/scriptFile.ts'
+import { recipesOf, selectsWorkspace, workspacePatterns } from '../src/scriptFile.ts'
 import { commandsOf, scriptOf } from '../src/shell.ts'
 import { DYN, type Script } from '../src/shellNodes.ts'
 import { calls, parse } from './parse.ts'
@@ -177,6 +177,34 @@ test('a command runner runs the command after its own words, so every guard read
   expect(argv('npx pytest')).toEqual(['npx pytest'])
 })
 
+test('mise exec tool words and dotenv/op options end where the command starts, with or without --', () => {
+  for (const r of [
+    'mise exec node@20',
+    'mise exec node@20 python@3.12',
+    'dotenv',
+    'dotenv -e .env -v A=1',
+    'op run',
+  ]) {
+    expect([r, argv(`${r} git push origin main`)]).toEqual([r, ['git push origin main']])
+    expect([r, argv(`${r} pytest`)]).toEqual([r, ['pytest']])
+  }
+  // A later -- belongs to the command, not the wrapper.
+  expect(argv('dotenv git push -- x')).toEqual(['git push -- x'])
+  expect(argv('mise exec node@20 git push -- x')).toEqual(['git push -- x'])
+})
+
+test('pnpm exec -c runs its words through a shell', () => {
+  for (const c of [
+    "pnpm exec -c 'git push origin main'",
+    "pnpm -C a exec --shell-mode 'git push origin main'",
+    'pnpm --filter web exec -c git push origin main',
+  ]) {
+    expect([c, argv(c).at(-1)]).toEqual([c, 'git push origin main'])
+  }
+  expect(argv("pnpm exec -c 'pytest'").at(-1)).toBe('pytest')
+  expect(argv("pnpm run build -c 'git push'")).toEqual(['pnpm run build -c git push'])
+})
+
 test('a task runner command line is resolved the way the runner reads it', () => {
   const push = 'git push origin main'
   const run = (command: string, files: Record<string, string>) => withFiles(command, files)
@@ -193,13 +221,13 @@ test('a task runner command line is resolved the way the runner reads it', () =>
     ['make -Csub -f x.mk ship', '/s/sub/x.mk#ship'],
     ['make --directory=sub ship', '/s/sub/Makefile#ship'],
     ['npm --prefix pkgs/a run ship', '/s/pkgs/a/package.json#ship'],
-    ['npm -w web run ship', '/s/package.json#ship'],
+    ['npm -w web run ship', '/s/package.json#ship@web'],
     ['npm rum ship', '/s/package.json#ship'],
     ['npm run-script ship', '/s/package.json#ship'],
     ['bun --cwd pkgs/a run ship', '/s/pkgs/a/package.json#ship'],
     ['bun ship', '/s/package.json#ship'],
     ['pnpm -C pkgs/a ship', '/s/pkgs/a/package.json#ship'],
-    ['pnpm --filter web run ship', '/s/package.json#ship'],
+    ['pnpm --filter web run ship', '/s/package.json#ship@web'],
     ['yarn --cwd pkgs/a ship', '/s/pkgs/a/package.json#ship'],
     ['npm install', '/s/package.json#install'],
     ['npm ci', '/s/package.json#prepare'],
@@ -231,4 +259,28 @@ test('a task runner command line is resolved the way the runner reads it', () =>
   // Controls: bun's own commands and a file argument are not scripts.
   expect(recipe('bun test')).toEqual([])
   expect(recipe('bun ./a.ts')).toEqual([])
+})
+
+test('npm -w and pnpm --filter name the workspace whose package.json holds the script', () => {
+  const at = (command: string) =>
+    recipesOf(calls(command)[0] as never, '/s').map((r) => r.workspace)
+  expect(at('npm -w web run ship')).toEqual(['web'])
+  expect(at('npm --workspace=web --workspace api run ship')).toEqual(['web', 'api'])
+  expect(at('pnpm --filter ./pkgs/a ship')).toEqual(['./pkgs/a'])
+  expect(at('pnpm -F web run ship')).toEqual(['web'])
+  expect(at('npm run ship')).toEqual([undefined])
+})
+
+test('workspace roots list their patterns, and a selector names a package by name or path', () => {
+  expect(workspacePatterns('{"workspaces":["web","pkgs/*"]}', '')).toEqual(['web', 'pkgs/*'])
+  expect(workspacePatterns('{"workspaces":{"packages":["a"]}}', '')).toEqual(['a'])
+  expect(
+    workspacePatterns('{}', 'packages:\n  - \'apps/*\'\n  - "!apps/x"\n  - libs/b # c\nother: 1\n'),
+  ).toEqual(['apps/*', 'libs/b'])
+  expect(workspacePatterns('not json', '')).toEqual([])
+  expect(selectsWorkspace('web', 'web', 'apps/w')).toBe(true)
+  expect(selectsWorkspace('./apps/w/', undefined, 'apps/w')).toBe(true)
+  expect(selectsWorkspace('web...', 'web', 'apps/w')).toBe(true)
+  expect(selectsWorkspace('web', 'api', 'apps/w')).toBe(false)
+  expect(selectsWorkspace('@s/*', '@s/a', 'a')).toBe(false)
 })

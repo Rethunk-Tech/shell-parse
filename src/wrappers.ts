@@ -8,6 +8,8 @@ export interface WrapperSpec {
   lead?: number
   sub?: string
   dashes?: boolean
+  // Tool words (`node@20`) that sit between the options and the command, with no `--` after them.
+  tools?: boolean
 }
 export const WRAPPERS = new Map<string, WrapperSpec>([
   [
@@ -48,10 +50,18 @@ export const WRAPPERS = new Map<string, WrapperSpec>([
   ['poetry', { sub: 'run', values: ['-C', '--directory', '-P', '--project'] }],
   ['pnpm', { sub: 'exec', values: ['-C', '--dir', '--filter', '-F', '--shell-mode'] }],
   ['yarn', { sub: 'exec', values: ['--cwd'] }],
-  ['mise', { sub: 'exec', dashes: true, values: ['-C', '--cd', '-j', '--jobs', '-E', '--env'] }],
+  [
+    'mise',
+    {
+      sub: 'exec',
+      dashes: true,
+      tools: true,
+      values: ['-C', '--cd', '-j', '--jobs', '-E', '--env'],
+    },
+  ],
   ['direnv', { sub: 'exec', values: [], lead: 1 }],
-  ['dotenv', { dashes: true, values: ['-e', '-v', '-c', '-p'] }],
-  ['op', { sub: 'run', dashes: true, values: ['--env-file', '--account', '--session', '--cache'] }],
+  ['dotenv', { values: ['-e', '-v', '-c', '-p'] }],
+  ['op', { sub: 'run', values: ['--env-file', '--account', '--session', '--cache'] }],
   ['chronic', { values: [] }],
   ['sudo', { values: ['-u', '-g', '-h', '-p', '-C', '-D', '-r', '-t', '-U', '-T'] }],
   ['doas', { values: ['-u', '-C'] }],
