@@ -23,26 +23,34 @@ export interface Recipe {
   // Script.files: `<file>#<target>`, an empty target meaning the default one.
   file: string
   target: string
+  // The make variables the command line sets (`*` when -e lets the environment override the Makefile).
+  vars: string[]
   key: string
 }
 const MAKES = new Set(['make', 'gmake'])
 const NPMS = new Set(['npm', 'bun', 'pnpm', 'yarn'])
 const NPM_LIFECYCLE = new Set(['test', 't', 'start', 'stop', 'restart'])
 const MAKE_VALUE_FLAGS = new Set(['-j', '-l', '-o', '-W', '-I', '-E'])
-const recipe = (runner: Runner, file: string, target: string): Recipe => ({
+const recipe = (runner: Runner, file: string, target: string, vars: string[] = []): Recipe => ({
   runner,
   file,
   target,
-  key: `${file}#${target}`,
+  vars,
+  key: `${file}#${target}${vars.length > 0 ? `#${vars.join(',')}` : ''}`,
 })
+const MAKE_VAR_WORD = /^(?<name>[A-Za-z_][\w.-]*)=/u
+const MAKE_ENV_FLAG = /^-[^-]*e|^--environment-overrides$/u
 const makeRecipes = (words: string[], dir: string): Recipe[] => {
   let where = dir
   let file: string | undefined
   const targets: string[] = []
+  const vars: string[] = []
   for (let i = 0; i < words.length; i++) {
     const v = words[i] ?? ''
     const next = words[i + 1] ?? ''
-    if (v === '-C' || v === '--directory') {
+    if (MAKE_ENV_FLAG.test(v)) {
+      vars.push('*')
+    } else if (v === '-C' || v === '--directory') {
       where = joinPath(where, next) ?? where
       i += 1
     } else if (v === '-f' || v === '--file' || v === '--makefile') {
@@ -50,6 +58,8 @@ const makeRecipes = (words: string[], dir: string): Recipe[] => {
       i += 1
     } else if (MAKE_VALUE_FLAGS.has(v)) {
       i += 1
+    } else if (MAKE_VAR_WORD.test(v)) {
+      vars.push(MAKE_VAR_WORD.exec(v)?.groups?.name ?? '')
     } else if (!(v.startsWith('-') || v.includes('='))) {
       targets.push(v)
     }
@@ -57,7 +67,7 @@ const makeRecipes = (words: string[], dir: string): Recipe[] => {
   const source = joinPath(where, file ?? 'Makefile')
   return source === undefined
     ? []
-    : (targets.length > 0 ? targets : ['']).map((t) => recipe('make', source, t))
+    : (targets.length > 0 ? targets : ['']).map((t) => recipe('make', source, t, vars))
 }
 const justRecipes = (words: string[], dir: string): Recipe[] => {
   let file = 'justfile'

@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test'
 import { fdExec } from '../src/runners.ts'
+import { recipesOf } from '../src/scriptFile.ts'
 import { commandsOf, scriptOf } from '../src/shell.ts'
 import { DYN, type Script } from '../src/shellNodes.ts'
 import { calls, parse } from './parse.ts'
@@ -83,6 +84,20 @@ test('a task runner call reads the recipe the caller kept under its key', () => 
   expect(run('bun ship', { [key('/s/package.json', 'ship')]: push })).toEqual(['bun ship'])
   expect(run('npm install', { [key('/s/package.json', 'install')]: push })).toEqual(['npm install'])
   expect(run('make ship', {})).toEqual(['make ship'])
+})
+
+test('a make call keys its recipe by the variables its command line sets', () => {
+  const recipe = (command: string) => {
+    const script = scriptOf(command, parse, undefined, { files: new Map(), cwd: '/s' }) as Script
+    return commandsOf(script, { cwd: '/s', home: '/h' }).flatMap((c) => recipesOf(c, '/s'))
+  }
+  expect(recipe('make clean')[0]).toMatchObject({ key: '/s/Makefile#clean', vars: [] })
+  expect(recipe('make clean BUILD_DIR=/ X=1')[0]).toMatchObject({
+    key: '/s/Makefile#clean#BUILD_DIR,X',
+    vars: ['BUILD_DIR', 'X'],
+  })
+  expect(recipe('make -e clean')[0]?.vars).toEqual(['*'])
+  expect(recipe('make --environment-overrides clean')[0]?.vars).toEqual(['*'])
 })
 
 test('the recipe call carries the file it was read from', () => {
