@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "compilerOptions": {
+    // canon ts-typescript-00001
+    "strict": true,
+
+    // canon ts-typescript-00002
+    "noUncheckedIndexedAccess": true,
+
+    // canon ts-typescript-00003
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "allowUnusedLabels": false,
+    "allowUnreachableCode": false,
+
+    // canon ts-typescript-00004
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+
+    // canon ts-typescript-00005
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+
+    // canon ts-typescript-00006
+    "erasableSyntaxOnly": true,
+    "useDefineForClassFields": true,
+
+    // canon ts-typescript-00007
+    "noUncheckedSideEffectImports": true,
+
+    // canon ts-typescript-00008
+    "skipLibCheck": true,
+
+    // canon ts-typescript-00010
+    "moduleResolution": "bundler",
+
+    // canon ts-typescript-00011
+    "resolveJsonModule": true,
+
+    // canon ts-typescript-00012
+    "esModuleInterop": true,
+
+    // canon ts-typescript-00013
+    "allowJs": false,
+
+    // Consumers vendor the sources, so nothing is emitted.
+    "noEmit": true,
+    "incremental": true,
+    "allowImportingTsExtensions": true,
+
+    // The package's own: canon leaves the target and the library set to the package.
+    "target": "ES2023",
+    "module": "ESNext",
+    "lib": ["ES2023"],
+    "types": ["bun"]
+  },
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"]
+}

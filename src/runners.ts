@@ -1,0 +1,158 @@
+// Commands that run another command or script from their own arguments (find -exec, env -S, trap,
+// flock, su -c, script -c, parallel, git submodule foreach, git rebase -x). No engine imports.
+import type { Call, Piece, Word } from './shellNodes.ts'
+import { gitVerb } from './shellWords.ts'
+
+const joinedRaw = (words: Word[]) => ({ text: words.map((a) => a.raw).join(' '), base: undefined })
+const SCRIPT_C = /^-[a-zA-Z]*c$/u
+const RUN_FLAG = new Set(['-exec', '-execdir', '-ok', '-okdir'])
+const SCRIPT_FLAG = new Set(['-c', '--command', '-x', '--exec'])
+const FILTERS = new Set([
+  '--env-filter',
+  '--tree-filter',
+  '--index-filter',
+  '--parent-filter',
+  '--msg-filter',
+  '--commit-filter',
+  '--tag-name-filter',
+  '--setup',
+])
+const TRANSPORT = new Set(['fetch', 'pull', 'push', 'clone', 'ls-remote', 'archive', 'send-pack'])
+// rebase's `-xCMD`, and `-ix CMD` where the group ends in x: the command is the rest of the word or the next one.
+const EXEC_ATTACHED = /^-[a-wyzA-Z]*x(?<cmd>.*)$/u
+const attachedExec = (words: Word[]) =>
+  words.flatMap((a, i) => {
+    const cmd = EXEC_ATTACHED.exec(a.value ?? '')?.groups?.cmd
+    const next = words[i + 1]
+    if (cmd === undefined) {
+      return []
+    }
+    if (cmd === '') {
+      return next ? [next.script] : []
+    }
+    return [{ text: cmd, base: undefined }]
+  })
+const optionValue = (words: Word[], names: Set<string>) =>
+  words.flatMap((a, i) => {
+    const v = a.value ?? ''
+    const eq = v.indexOf('=')
+    if (eq > 0 && names.has(v.slice(0, eq))) {
+      return [{ text: v.slice(eq + 1), base: undefined }]
+    }
+    const next = words[i + 1]
+    return names.has(v) && next ? [next.script] : []
+  })
+// The scripts a git subcommand hands a shell: foreach, rebase --exec, bisect run, filter-branch filters, a
+// diff tool's command, and a local transport's helper programs.
+const gitPieces = (call: Call): Piece[] => {
+  const verb = gitVerb(call)
+  const rest = call.argv.slice((verb?.at ?? 0) + 1)
+  const sub = rest.findIndex((a) => !a.value?.startsWith('-'))
+  if (verb?.verb === 'submodule' && rest[sub]?.value === 'foreach') {
+    // foreach joins its arguments into one script for sh to run; only the words before the command are options.
+    const words = rest.slice(sub + 1)
+    const at = words.findIndex((a) => !a.value?.startsWith('-'))
+    const command = at < 0 ? [] : words.slice(at)
+    const [only] = command
+    return [
+      command.length === 1 && only
+        ? only.script
+        : { text: command.map((a) => a.value ?? '').join(' '), base: undefined },
+    ]
+  }
+  if (verb?.verb === 'rebase') {
+    return [...optionValue(rest, SCRIPT_FLAG), ...attachedExec(rest)]
+  }
+  if (verb?.verb === 'bisect' && rest[0]?.value === 'run') {
+    return [joinedRaw(rest.slice(1))]
+  }
+  if (verb?.verb === 'filter-branch') {
+    return optionValue(rest, FILTERS)
+  }
+  if (verb?.verb === 'difftool' || verb?.verb === 'mergetool') {
+    return optionValue(rest, new Set(['-x', '--extcmd']))
+  }
+  if (verb?.verb !== undefined && TRANSPORT.has(verb.verb)) {
+    // A local transport runs these through a shell.
+    const names = new Set(['--upload-pack', '--receive-pack', '--exec'])
+    if (verb.verb === 'clone') {
+      names.add('-u')
+    }
+    return optionValue(rest, names)
+  }
+  return []
+}
+// ssh options that take the next word, so it is not the host.
+const SSH_VALUE_OPT = /^-[BbcDEeFIiJLlmOopQRSWw]$/u
+// localhost, a loopback address, or this machine's own name by substitution.
+const LOCAL_HOST =
+  /^"?(?:[^@]*@)?(?:localhost|127(?:\.\d+){3}|\[?::1\]?|\$\(hostname[^)]*\)|`hostname[^`]*`|\$\{?HOSTNAME\}?)"?$/u
+// ssh to this machine runs its command here, past every guard: the command is read as typed.
+const sshPieces = (args: Word[]): Piece[] => {
+  const at = args.findIndex(
+    (a, i) => !(a.raw.startsWith('-') || SSH_VALUE_OPT.test(args[i - 1]?.raw ?? '')),
+  )
+  const host = args[at]
+  if (host === undefined || !LOCAL_HOST.test(host.raw)) {
+    return []
+  }
+  const rest = args.slice(at + 1)
+  const command = rest[0]?.raw === '--' ? rest.slice(1) : rest
+  // ssh hands the remote shell its arguments joined by spaces, so a quoted argument is the text it holds.
+  return [{ text: command.map((w) => w.value ?? w.raw).join(' '), base: undefined }]
+}
+export const runnerPieces = (call: Call): Piece[] => {
+  const args = call.argv.slice(1)
+  const values = args.map((a) => a.value)
+  const pieces: Piece[] = []
+  for (const w of call.wrappers) {
+    if (w.name === 'env') {
+      pieces.push(...optionValue(w.words, new Set(['-S', '--split-string'])))
+    } else if (w.name === 'flock') {
+      pieces.push(...optionValue(w.words, new Set(['-c', '--command'])))
+    }
+  }
+  if (call.name === 'env') {
+    pieces.push(...optionValue(args, new Set(['-S', '--split-string'])))
+  } else if (call.name === 'find') {
+    args.forEach((a, i) => {
+      if (RUN_FLAG.has(a.value ?? '')) {
+        const end = args.findIndex((b, j) => j > i && (b.value === ';' || b.value === '+'))
+        pieces.push(joinedRaw(args.slice(i + 1, end < 0 ? undefined : end)))
+      }
+    })
+  } else if (call.name === 'trap') {
+    const [handler, ...signals] = values[0] === '--' ? args.slice(1) : args
+    if (handler && handler.value !== '-' && signals.length > 0) {
+      pieces.push(handler.script)
+    }
+  } else if (call.name === 'flock' || call.name === 'su' || call.name === 'runuser') {
+    pieces.push(...optionValue(args, new Set(['-c', '--command'])))
+  } else if (call.name === 'script') {
+    // util-linux script runs `-c` through a shell, usually grouped as `-qc CMD` for a pty.
+    args.forEach((a, i) => {
+      const v = a.value ?? ''
+      const next = args[i + 1]
+      if (v.startsWith('--command=')) {
+        pieces.push({ text: v.slice('--command='.length), base: undefined })
+      } else if ((v === '--command' || SCRIPT_C.test(v)) && next) {
+        pieces.push(next.script)
+      }
+    })
+  } else if (call.name === 'parallel') {
+    const end = values.findIndex((v) => v === ':::' || v === '::::')
+    pieces.push(
+      joinedRaw(
+        args.slice(
+          values.findIndex((v) => !v?.startsWith('-')),
+          end < 0 ? undefined : end,
+        ),
+      ),
+    )
+  } else if (call.name === 'ssh') {
+    pieces.push(...sshPieces(args))
+  } else if (call.name === 'git') {
+    pieces.push(...gitPieces(call))
+  }
+  return pieces.filter((p) => p.text.trim() !== '')
+}

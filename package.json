@@ -1,0 +1,24 @@
+{
+  "name": "shell-parse",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Reads a Bash command as the calls a shell would run, from shfmt's JSON syntax tree.",
+  "license": "MIT",
+  "author": "Rethunk.Tech, LLC",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Rethunk-Tech/shell-parse.git"
+  },
+  "type": "module",
+  "packageManager": "bun@1.4.5",
+  "scripts": {
+    "lint": "biome check --error-on-warnings .",
+    "typecheck": "tsc -p tsconfig.test.json",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.6.8",
+    "@types/bun": "^1.4.4",
+    "typescript": "^7.0.2"
+  }
+}

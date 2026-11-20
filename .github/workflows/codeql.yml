@@ -1,0 +1,67 @@
+# CodeQL advanced setup: every language in this repository with the security-and-quality suite, re-runnable
+# from the Actions tab. Go is built (autobuild); every other language is extracted without a build.
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "17 12 * * 2"
+  workflow_dispatch:
+
+permissions: {}
+
+# A newer push makes the older run's verdict worthless, so it cancels that run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: actions
+            build-mode: none
+          - language: javascript-typescript
+            build-mode: none
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          queries: security-and-quality
+      - name: Analyze
+        uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          category: /language:${{ matrix.language }}
+
+  # One required check for branch protection: a matrix leg that never ran reads as "not failing" rather than "not run".
+  all-checks:
+    if: always()
+    needs: [analyze]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fail if any check did not succeed
+        run: |
+          if [ "${{ needs.analyze.result }}" != "success" ]; then
+            echo "analyze=${{ needs.analyze.result }}"
+            exit 1
+          fi
+          echo "all checks passed"
