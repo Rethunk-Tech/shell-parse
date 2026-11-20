@@ -1,0 +1,14 @@
+#!/bin/sh
+# 3.7.0 is the release the Bash guards' syntax tree is read against. --dir prints the directory holding
+# the binary, so CI can put it on PATH.
+set -eu
+VERSION=3.7.0
+# shellcheck source=scripts/pinned.sh
+. "$(dirname "$0")/pinned.sh"
+pinned shfmt "$VERSION" 0264c424278b18e22453fe523ec01a19805ce3b8ebf18eaf3aadc1edc23f42e3 \
+  "https://github.com/mvdan/sh/releases/download/v${VERSION}/shfmt_v${VERSION}_linux_amd64"
+if [ "${1:-}" = --dir ]; then
+  dirname "$bin"
+  exit 0
+fi
+exec "$bin" "$@"
