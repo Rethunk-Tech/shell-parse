@@ -45,3 +45,9 @@ test('a script run by its path is read when its shebang names an sh-family shell
   expect(withFiles('./ship.sh', { '/s/ship.sh': 'git push' })).toEqual(['./ship.sh'])
   expect(withFiles('ship.sh', { '/s/ship.sh': push })).toEqual(['ship.sh'])
 })
+
+test('fd -x and -X run their command like find -exec', () => {
+  expect(argv('fd . ~ -X rm -rf')).toContain('rm -rf')
+  expect(argv('fd -e log --exec rm {} ; .')).toContain('rm {}')
+  expect(argv('fd -e log')).toEqual(['fd -e log'])
+})

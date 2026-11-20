@@ -6,6 +6,7 @@ import { gitVerb } from './shellWords.ts'
 const joinedRaw = (words: Word[]) => ({ text: words.map((a) => a.raw).join(' '), base: undefined })
 const SCRIPT_C = /^-[a-zA-Z]*c$/u
 const RUN_FLAG = new Set(['-exec', '-execdir', '-ok', '-okdir'])
+const FD_EXEC = new Set(['-x', '--exec', '-X', '--exec-batch'])
 const SCRIPT_FLAG = new Set(['-c', '--command', '-x', '--exec'])
 const FILTERS = new Set([
   '--env-filter',
@@ -101,6 +102,18 @@ const sshPieces = (args: Word[]): Piece[] => {
   // ssh hands the remote shell its arguments joined by spaces, so a quoted argument is the text it holds.
   return [{ text: command.map((w) => w.value ?? w.raw).join(' '), base: undefined }]
 }
+// fd's command takes every word after the flag, up to a `;`.
+const fdPieces = (args: Word[]): Piece[] => {
+  const at = args.findIndex((a) => FD_EXEC.has(a.value ?? ''))
+  const end = args.findIndex((b, j) => j > at && b.value === ';')
+  return at < 0 ? [] : [joinedRaw(args.slice(at + 1, end < 0 ? undefined : end))]
+}
+const toolPieces = (call: Call, args: Word[]): Piece[] => {
+  if (call.name === 'fd' || call.name === 'fdfind') {
+    return fdPieces(args)
+  }
+  return []
+}
 export const runnerPieces = (call: Call): Piece[] => {
   const args = call.argv.slice(1)
   const values = args.map((a) => a.value)
@@ -154,5 +167,6 @@ export const runnerPieces = (call: Call): Piece[] => {
   } else if (call.name === 'git') {
     pieces.push(...gitPieces(call))
   }
+  pieces.push(...toolPieces(call, args))
   return pieces.filter((p) => p.text.trim() !== '')
 }
