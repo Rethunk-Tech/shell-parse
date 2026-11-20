@@ -40,11 +40,25 @@ test('a script run by its path is read when its shebang names an sh-family shell
   expect(withFiles('./ship.sh', { '/s/ship.sh': '#!/usr/bin/env -S zsh -e\ngit push' })).toContain(
     'git push',
   )
-  // Not a shell script: python, no shebang, or a name with no path.
+  for (const shebang of [
+    '#!/bin/ksh',
+    '#!/bin/mksh',
+    '#!/bin/ash',
+    '#!/bin/busybox sh',
+    '#!/usr/bin/env ksh',
+  ]) {
+    expect([shebang, withFiles('./ship.sh', { '/s/ship.sh': `${shebang}\ngit push` })]).toEqual([
+      shebang,
+      ['./ship.sh', 'git push'],
+    ])
+  }
+  // No shebang: the shell that runs it reads it as sh. A binary, python or a name with no path is not read.
+  expect(withFiles('./ship.sh', { '/s/ship.sh': 'git push' })).toContain('git push')
   expect(withFiles('./ship.sh', { '/s/ship.sh': '#!/usr/bin/python3\ngit push' })).toEqual([
     './ship.sh',
   ])
-  expect(withFiles('./ship.sh', { '/s/ship.sh': 'git push' })).toEqual(['./ship.sh'])
+  expect(withFiles('./ship.sh', { '/s/ship.sh': '\u007fELF\u0000git push' })).toEqual(['./ship.sh'])
+  expect(withFiles('./ship.sh', { '/s/ship.sh': '#!/bin/fish\ngit push' })).toEqual(['./ship.sh'])
   expect(withFiles('ship.sh', { '/s/ship.sh': push })).toEqual(['ship.sh'])
 })
 
@@ -81,8 +95,10 @@ test('a task runner call reads the recipe the caller kept under its key', () => 
   expect(run('just ship', { [key('/s/justfile', 'ship')]: push })).toContain(push)
   // Controls: another target, a runner that reads no package script, and a recipe not kept.
   expect(run('make build', { [key('/s/Makefile', 'ship')]: push })).toEqual(['make build'])
-  expect(run('bun ship', { [key('/s/package.json', 'ship')]: push })).toEqual(['bun ship'])
-  expect(run('npm install', { [key('/s/package.json', 'install')]: push })).toEqual(['npm install'])
+  expect(run('bun test', { [key('/s/package.json', 'test')]: push })).toEqual(['bun test'])
+  expect(run('bun ./ship.ts', { [key('/s/package.json', './ship.ts')]: push })).toEqual([
+    'bun ./ship.ts',
+  ])
   expect(run('make ship', {})).toEqual(['make ship'])
 })
 
@@ -159,4 +175,60 @@ test('a command runner runs the command after its own words, so every guard read
   expect(argv('pnpm install')).toEqual(['pnpm install'])
   expect(argv("npm run build -c 'git push'")).toEqual(['npm run build -c git push'])
   expect(argv('npx pytest')).toEqual(['npx pytest'])
+})
+
+test('a task runner command line is resolved the way the runner reads it', () => {
+  const push = 'git push origin main'
+  const run = (command: string, files: Record<string, string>) => withFiles(command, files)
+  const read = (command: string, key: string) => run(command, { [key]: push }).includes(push)
+  for (const [command, key] of [
+    ['make -j ship', '/s/Makefile#ship'],
+    ['make -j4 ship', '/s/Makefile#ship'],
+    ['make -j 4 -l 2 ship', '/s/Makefile#ship'],
+    ['make --jobs ship', '/s/Makefile#ship'],
+    ['make --file=x.mk ship', '/s/x.mk#ship'],
+    ['make -fx.mk ship', '/s/x.mk#ship'],
+    ['make --makefile x.mk ship', '/s/x.mk#ship'],
+    ['make -C sub ship', '/s/sub/Makefile#ship'],
+    ['make -Csub -f x.mk ship', '/s/sub/x.mk#ship'],
+    ['make --directory=sub ship', '/s/sub/Makefile#ship'],
+    ['npm --prefix pkgs/a run ship', '/s/pkgs/a/package.json#ship'],
+    ['npm -w web run ship', '/s/package.json#ship'],
+    ['npm rum ship', '/s/package.json#ship'],
+    ['npm run-script ship', '/s/package.json#ship'],
+    ['bun --cwd pkgs/a run ship', '/s/pkgs/a/package.json#ship'],
+    ['bun ship', '/s/package.json#ship'],
+    ['pnpm -C pkgs/a ship', '/s/pkgs/a/package.json#ship'],
+    ['pnpm --filter web run ship', '/s/package.json#ship'],
+    ['yarn --cwd pkgs/a ship', '/s/pkgs/a/package.json#ship'],
+    ['npm install', '/s/package.json#install'],
+    ['npm ci', '/s/package.json#prepare'],
+    ['npm pack', '/s/package.json#prepare'],
+    ['npm publish', '/s/package.json#prepublishOnly'],
+    ['bun install', '/s/package.json#install'],
+    ['pnpm add x', '/s/package.json#prepare'],
+    ['just ship', '/s/justfile#ship'],
+  ]) {
+    expect([command, read(command as string, key as string)]).toEqual([command, true])
+  }
+  // A make command line with a variable or --eval is keyed apart from the bare one.
+  const recipe = (command: string) => {
+    const script = scriptOf(command, parse, undefined, { files: new Map(), cwd: '/s' }) as Script
+    return commandsOf(script, { cwd: '/s', home: '/h' }).flatMap((c) => recipesOf(c, '/s'))
+  }
+  expect(recipe("make --eval='z: ; git push' z")[0]).toMatchObject({
+    evals: ['z: ; git push'],
+    names: ['GNUmakefile', 'makefile', 'Makefile'],
+    up: false,
+  })
+  expect(recipe('make -Eabc z')[0]?.evals).toEqual(['abc'])
+  expect(recipe('make -f a.mk -f b.mk x').map((r) => r.file)).toEqual(['/s/a.mk', '/s/b.mk'])
+  expect(recipe('npm run ship')[0]).toMatchObject({ up: true, names: ['package.json'] })
+  expect(recipe('just ship')[0]).toMatchObject({
+    up: true,
+    names: ['justfile', 'Justfile', '.justfile'],
+  })
+  // Controls: bun's own commands and a file argument are not scripts.
+  expect(recipe('bun test')).toEqual([])
+  expect(recipe('bun ./a.ts')).toEqual([])
 })

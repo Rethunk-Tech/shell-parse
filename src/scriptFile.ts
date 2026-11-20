@@ -1,11 +1,20 @@
 // The script file a call runs from disk: `bash x.sh` and `source x`, a call named by a path (`./ship.sh`)
-// whose shebang names an sh-family shell, or a task runner's recipe (`make ship`, `npm run ship`,
-// `just ship`) the caller read from the Makefile, package.json or justfile. No engine imports.
+// whose shebang names an sh-family shell (or that has none, which sh runs), or a task runner's recipe
+// (`make ship`, `npm run ship`, `just ship`) the caller read from the Makefile, package.json or justfile.
+// No engine imports.
 import type { Call, Piece } from './shellNodes.ts'
 import { joinPath, SHELLS, scriptFileOf, type W } from './shellWords.ts'
 
 const SH_SHEBANG =
-  /^#![ \t]*(?:\S*\/)?(?:env[ \t]+(?:-\S+[ \t]+)*)?(?:bash|sh|zsh|dash)(?:[ \t].*)?$/u
+  /^#![ \t]*(?:\S*\/)?(?:env[ \t]+(?:-\S+[ \t]+)*)?(?:busybox[ \t]+)?(?:bash|sh|zsh|dash|ksh|mksh|ash)(?:[ \t].*)?$/u
+// A file with no `#!` is run by the shell that was asked to run it, unless it is a binary.
+const BINARY_SNIFF = 512
+const TEXT_CONTROLS = new Set([9, 10, 12, 13, 27])
+const isBinary = (text: string) =>
+  [...text.slice(0, BINARY_SNIFF)].some((ch) => {
+    const code = ch.charCodeAt(0)
+    return code === 0xff_fd || code === 0x7f || (code < 0x20 && !TEXT_CONTROLS.has(code))
+  })
 
 // The file a call named by a path runs, as an absolute path.
 export const execFileOf = (call: Call, cwd: string | undefined) => {
@@ -15,6 +24,8 @@ export const execFileOf = (call: Call, cwd: string | undefined) => {
     : undefined
 }
 export const isShShebang = (text: string) => SH_SHEBANG.test(text.split('\n', 1)[0] ?? '')
+export const isShScript = (text: string) =>
+  isShShebang(text) || !(text.startsWith('#!') || isBinary(text))
 
 export type Runner = 'make' | 'npm' | 'just'
 export interface Recipe {
@@ -25,52 +36,139 @@ export interface Recipe {
   target: string
   // The make variables the command line sets (`*` when -e lets the environment override the Makefile).
   vars: string[]
+  // The file names the runner tries in `dir` (make: GNUmakefile, makefile, Makefile), and whether it then
+  // tries each parent directory (npm and just do).
+  names: string[]
+  dir: string
+  up: boolean
+  // The directory the runner runs in, which an included makefile's relative path is read from.
+  cwd: string
+  // Text make reads before any file (--eval).
+  evals: string[]
   key: string
 }
 const MAKES = new Set(['make', 'gmake'])
 const NPMS = new Set(['npm', 'bun', 'pnpm', 'yarn'])
-const NPM_LIFECYCLE = new Set(['test', 't', 'start', 'stop', 'restart'])
-const MAKE_VALUE_FLAGS = new Set(['-j', '-l', '-o', '-W', '-I', '-E'])
-const recipe = (runner: Runner, file: string, target: string, vars: string[] = []): Recipe => ({
-  runner,
-  file,
-  target,
-  vars,
-  key: `${file}#${target}${vars.length > 0 ? `#${vars.join(',')}` : ''}`,
-})
+const NPM_LIFECYCLE = new Set(['test', 't', 'tst', 'start', 'stop', 'restart'])
+const recipe = (
+  runner: Runner,
+  file: string,
+  target: string,
+  where: Partial<Recipe> = {},
+): Recipe => {
+  const { vars = [], evals = [] } = where
+  const extra = [...vars, ...evals.map((e) => `--eval=${e}`)]
+  const dir = where.dir ?? file.slice(0, file.lastIndexOf('/') || 1)
+  return {
+    runner,
+    file,
+    target,
+    vars,
+    names: where.names ?? [file.slice(file.lastIndexOf('/') + 1)],
+    dir,
+    up: where.up ?? false,
+    cwd: where.cwd ?? dir,
+    evals,
+    key: `${file}#${target}${extra.length > 0 ? `#${extra.join(',')}` : ''}`,
+  }
+}
 const MAKE_VAR_WORD = /^(?<name>[A-Za-z_][\w.-]*)=/u
 const MAKE_ENV_FLAG = /^-[^-]*e|^--environment-overrides$/u
-const makeRecipes = (words: string[], dir: string): Recipe[] => {
+const MAKE_NAMES = ['GNUmakefile', 'makefile', 'Makefile']
+// Flags whose value is the next word (or attached: -Cdir, --file=x), and those whose number is optional.
+const MAKE_FLAG_VALUES: Record<string, string[]> = {
+  C: ['-C', '--directory'],
+  f: ['-f', '--file', '--makefile'],
+  E: ['-E', '--eval'],
+  skip: [
+    '-o',
+    '--old-file',
+    '--assume-old',
+    '-W',
+    '--what-if',
+    '--new-file',
+    '--assume-new',
+    '-I',
+    '--include-dir',
+  ],
+}
+const MAKE_OPTIONAL_NUMBER = new Set(['-j', '--jobs', '-l', '--load-average', '--max-load'])
+const DIGITS = /^\d/u
+// The make flag a word is: its kind (C, f, E or skip), its value, and whether the value was the next word.
+const makeFlag = (v: string, next: string) => {
+  for (const [kind, names] of Object.entries(MAKE_FLAG_VALUES)) {
+    for (const n of names) {
+      const long = n.startsWith('--')
+      if (v === n) {
+        return { kind, value: next, used: 1 }
+      }
+      if (long ? v.startsWith(`${n}=`) : v.startsWith(n) && v.length > n.length) {
+        return { kind, value: v.slice(n.length + (long ? 1 : 0)), used: 0 }
+      }
+    }
+  }
+  return
+}
+// A make word that is no flag: a variable it sets (`*` for -e), or a target.
+const makeWord = (v: string) => {
+  if (MAKE_ENV_FLAG.test(v)) {
+    return { vars: ['*'], targets: [] as string[] }
+  }
+  if (MAKE_VAR_WORD.test(v)) {
+    return { vars: [MAKE_VAR_WORD.exec(v)?.groups?.name ?? ''], targets: [] }
+  }
+  return v.startsWith('-') || v.includes('=')
+    ? { vars: [], targets: [] }
+    : { vars: [], targets: [v] }
+}
+// What a make command line says: the directory, makefiles, --eval texts, variables and targets.
+const makeCommandLine = (words: string[], dir: string) => {
   let where = dir
-  let file: string | undefined
+  const files: string[] = []
+  const evals: string[] = []
   const targets: string[] = []
   const vars: string[] = []
   for (let i = 0; i < words.length; i++) {
     const v = words[i] ?? ''
     const next = words[i + 1] ?? ''
-    if (MAKE_ENV_FLAG.test(v)) {
-      vars.push('*')
-    } else if (v === '-C' || v === '--directory') {
-      where = joinPath(where, next) ?? where
-      i += 1
-    } else if (v === '-f' || v === '--file' || v === '--makefile') {
-      file = next
-      i += 1
-    } else if (MAKE_VALUE_FLAGS.has(v)) {
-      i += 1
-    } else if (MAKE_VAR_WORD.test(v)) {
-      vars.push(MAKE_VAR_WORD.exec(v)?.groups?.name ?? '')
-    } else if (!(v.startsWith('-') || v.includes('='))) {
-      targets.push(v)
+    const flag = makeFlag(v, next)
+    if (flag?.kind === 'C') {
+      where = joinPath(where, flag.value) ?? where
     }
+    if (flag?.kind === 'f') {
+      files.push(flag.value)
+    }
+    if (flag?.kind === 'E') {
+      evals.push(flag.value)
+    }
+    const word = flag ? { vars: [], targets: [] } : makeWord(v)
+    targets.push(...word.targets)
+    vars.push(...word.vars)
+    i += flag?.used ?? (MAKE_OPTIONAL_NUMBER.has(v) && DIGITS.test(next) ? 1 : 0)
   }
-  const source = joinPath(where, file ?? 'Makefile')
-  return source === undefined
-    ? []
-    : (targets.length > 0 ? targets : ['']).map((t) => recipe('make', source, t, vars))
+  return { where, files, evals, targets, vars }
 }
+const makeRecipes = (words: string[], dir: string): Recipe[] => {
+  const { where, files, evals, targets, vars } = makeCommandLine(words, dir)
+  return (files.length > 0 ? files : [undefined]).flatMap((file) => {
+    const source = joinPath(where, file ?? 'Makefile')
+    const named = file === undefined ? undefined : source
+    return source === undefined
+      ? []
+      : (targets.length > 0 ? targets : ['']).map((t) =>
+          recipe('make', source, t, {
+            vars,
+            evals,
+            names: named === undefined ? MAKE_NAMES : [named.slice(named.lastIndexOf('/') + 1)],
+            dir: named === undefined ? where : named.slice(0, named.lastIndexOf('/') || 1),
+            cwd: where,
+          }),
+        )
+  })
+}
+const JUST_NAMES = ['justfile', 'Justfile', '.justfile']
 const justRecipes = (words: string[], dir: string): Recipe[] => {
-  let file = 'justfile'
+  let file: string | undefined
   const targets: string[] = []
   for (let i = 0; i < words.length; i++) {
     const v = words[i] ?? ''
@@ -83,26 +181,107 @@ const justRecipes = (words: string[], dir: string): Recipe[] => {
       targets.push(v)
     }
   }
-  const source = joinPath(dir, file)
+  const source = joinPath(dir, file ?? 'justfile')
   return source === undefined
     ? []
-    : (targets.length > 0 ? targets : ['']).map((t) => recipe('just', source, t))
+    : (targets.length > 0 ? targets : ['']).map((t) =>
+        recipe('just', source, t, {
+          names: file === undefined ? JUST_NAMES : [file.slice(file.lastIndexOf('/') + 1)],
+          dir: file === undefined ? dir : source.slice(0, source.lastIndexOf('/') || 1),
+          up: file === undefined,
+        }),
+      )
+}
+// Each package manager's options that take the next word, and the ones that name the directory it runs in.
+const NPM_VALUE_FLAGS: Record<string, string[]> = {
+  npm: ['--prefix', '-C', '--workspace', '-w', '--userconfig', '--cache', '--registry'],
+  pnpm: ['-C', '--dir', '--filter', '-F', '--workspace-dir', '--config'],
+  yarn: ['--cwd', '--cache-folder', '--registry'],
+  bun: ['--cwd', '--filter', '-c', '--config', '--env-file', '--preload', '-r', '--registry'],
+}
+const NPM_DIR_FLAGS = new Set(['--prefix', '-C', '--dir', '--cwd'])
+const NPM_RUN = new Set(['run', 'run-script', 'rum', 'urn'])
+// The scripts a package manager runs besides the one named, for the verbs that run a package's lifecycle.
+const NPM_LIFECYCLE_VERBS: Record<string, string[]> = {
+  install: ['install', 'prepare'],
+  pack: ['pack', 'prepare'],
+  publish: ['publish', 'prepublishOnly', 'pack', 'prepare'],
+  version: ['version'],
+  rebuild: ['install', 'prepare'],
+}
+const NPM_VERB_ALIASES: Record<string, string> = {
+  i: 'install',
+  in: 'install',
+  ins: 'install',
+  inst: 'install',
+  insta: 'install',
+  instal: 'install',
+  add: 'install',
+  ci: 'install',
+  ic: 'install',
+  'clean-install': 'install',
+  it: 'install',
+  'install-test': 'install',
+  update: 'install',
+  up: 'install',
+  upgrade: 'install',
+  link: 'install',
+  ln: 'install',
+  rb: 'rebuild',
+  'install-ci-test': 'install',
+  cit: 'install',
+}
+// Bun's own commands: any other first word is a package.json script.
+const BUN_COMMANDS = new Set(
+  'run x install i add a remove rm update upgrade test build init create c link unlink pm repl publish outdated why audit info patch exec completions help feedback'.split(
+    ' ',
+  ),
+)
+// A package manager's leading options: where they point it, and the words from its command on.
+const npmOptions = (name: string, words: string[], dir: string) => {
+  let where = dir
+  let i = 0
+  const valued = NPM_VALUE_FLAGS[name] ?? []
+  while (i < words.length && words[i]?.startsWith('-')) {
+    const [flag = '', attached] = (words[i] ?? '').split('=')
+    if (valued.includes(flag)) {
+      where = NPM_DIR_FLAGS.has(flag)
+        ? (joinPath(where, attached ?? words[i + 1] ?? '') ?? where)
+        : where
+      i += attached === undefined ? 2 : 1
+    } else {
+      i += 1
+    }
+  }
+  return { where, words: words.slice(i) }
+}
+// The scripts a package manager command runs.
+const npmTargets = (name: string, [head, ...rest]: string[]) => {
+  const valued = NPM_VALUE_FLAGS[name] ?? []
+  const lifecycle = NPM_LIFECYCLE_VERBS[NPM_VERB_ALIASES[head ?? ''] ?? head ?? '']
+  if (head === undefined) {
+    return []
+  }
+  if (NPM_RUN.has(head)) {
+    const at = rest.findIndex((w, k) => !(w.startsWith('-') || valued.includes(rest[k - 1] ?? '')))
+    return at < 0 ? [] : [rest[at] ?? '']
+  }
+  if (lifecycle !== undefined) {
+    return lifecycle
+  }
+  if (name === 'npm') {
+    return NPM_LIFECYCLE.has(head) ? [head === 't' || head === 'tst' ? 'test' : head] : []
+  }
+  return name === 'bun' && (BUN_COMMANDS.has(head) || head.includes('/') || head.includes('.'))
+    ? []
+    : [head]
 }
 const npmRecipes = (name: string, words: string[], dir: string): Recipe[] => {
-  const source = joinPath(dir, 'package.json')
-  const [head] = words
-  const first = (from: string[]) => from.find((w) => !w.startsWith('-'))
-  let target: string | undefined
-  if (head === 'run' || (name === 'npm' && head === 'run-script')) {
-    target = first(words.slice(1))
-  } else if (name === 'npm') {
-    if (head !== undefined && NPM_LIFECYCLE.has(head)) {
-      target = head === 't' ? 'test' : head
-    }
-  } else if (name !== 'bun') {
-    target = first(words)
-  }
-  return source === undefined || target === undefined ? [] : [recipe('npm', source, target)]
+  const opts = npmOptions(name, words, dir)
+  const source = joinPath(opts.where, 'package.json')
+  return source === undefined
+    ? []
+    : [...new Set(npmTargets(name, opts.words))].map((t) => recipe('npm', source, t, { up: true }))
 }
 // The recipes a task runner call runs, by the target words it names; none when a word is only known at run time.
 export const recipesOf = (call: Call, cwd: string | undefined): Recipe[] => {
@@ -129,7 +308,7 @@ export const fileScriptOf = (w: W, call: Call): Piece | undefined => {
   }
   const exec = execFileOf(call, w.opts.cwd)
   const body = exec === undefined ? undefined : w.script.files?.get(exec)
-  if (body !== undefined && isShShebang(body)) {
+  if (body !== undefined && isShScript(body)) {
     return { text: body, base: undefined, file: exec }
   }
   const found = recipesOf(call, w.opts.cwd)

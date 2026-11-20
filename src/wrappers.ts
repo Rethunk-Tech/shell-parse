@@ -50,7 +50,7 @@ export const WRAPPERS = new Map<string, WrapperSpec>([
   ['yarn', { sub: 'exec', values: ['--cwd'] }],
   ['mise', { sub: 'exec', dashes: true, values: ['-C', '--cd', '-j', '--jobs', '-E', '--env'] }],
   ['direnv', { sub: 'exec', values: [], lead: 1 }],
-  ['dotenv', { dashes: true, values: ['-e', '-v', '-c', '-p', '--'] }],
+  ['dotenv', { dashes: true, values: ['-e', '-v', '-c', '-p'] }],
   ['op', { sub: 'run', dashes: true, values: ['--env-file', '--account', '--session', '--cache'] }],
   ['chronic', { values: [] }],
   ['sudo', { values: ['-u', '-g', '-h', '-p', '-C', '-D', '-r', '-t', '-U', '-T'] }],
