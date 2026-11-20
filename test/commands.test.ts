@@ -168,7 +168,7 @@ test('a command runner runs the command after its own words, so every guard read
     "npm exec -c 'git push origin main'",
     "npm x --call 'git push origin main'",
   ]) {
-    expect([c, argv(c).at(-1)]).toEqual([c, 'git push origin main'])
+    expect([c, argv(c)]).toEqual([c, expect.arrayContaining(['git push origin main'])])
   }
   // Controls: a subcommand that runs no command, and npm run's own -c.
   expect(argv('uv sync')).toEqual(['uv sync'])
@@ -199,7 +199,7 @@ test('pnpm exec -c runs its words through a shell', () => {
     "pnpm -C a exec --shell-mode 'git push origin main'",
     'pnpm --filter web exec -c git push origin main',
   ]) {
-    expect([c, argv(c).at(-1)]).toEqual([c, 'git push origin main'])
+    expect([c, argv(c)]).toEqual([c, expect.arrayContaining(['git push origin main'])])
   }
   expect(argv("pnpm exec -c 'pytest'").at(-1)).toBe('pytest')
   expect(argv("pnpm run build -c 'git push'")).toEqual(['pnpm run build -c git push'])

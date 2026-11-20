@@ -48,7 +48,7 @@ export const WRAPPERS = new Map<string, WrapperSpec>([
     },
   ],
   ['poetry', { sub: 'run', values: ['-C', '--directory', '-P', '--project'] }],
-  ['pnpm', { sub: 'exec', values: ['-C', '--dir', '--filter', '-F', '--shell-mode'] }],
+  ['pnpm', { sub: 'exec', values: ['-C', '--dir', '--filter', '-F'] }],
   ['yarn', { sub: 'exec', values: ['--cwd'] }],
   [
     'mise',

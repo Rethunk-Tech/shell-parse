@@ -152,43 +152,44 @@ const toolPieces = (call: Call, args: Word[]): Piece[] => {
   if (call.name === 'fd' || call.name === 'fdfind') {
     return fdPieces(args)
   }
-  if (call.name === 'pnpm') {
-    return pnpmExecPieces(args)
-  }
   return call.name === 'gate' ? gatePieces(args) : []
 }
 const PNPM_VALUE_FLAG = new Set(['-C', '--dir', '--filter', '-F'])
 const PNPM_SHELL_MODE = new Set(['-c', '--shell-mode'])
-// `pnpm [opts] exec -c CMD...` runs its words through a shell.
-const pnpmExecPieces = (args: Word[]): Piece[] => {
+// `pnpm [opts] exec -c CMD...` runs the command words through a shell; `words` is the wrapper's own, `command` what follows.
+const pnpmShellPieces = (words: Word[], command: Word[]): Piece[] => {
+  const args = words.slice(1)
   let i = 0
   while (args[i]?.value?.startsWith('-')) {
     i += PNPM_VALUE_FLAG.has(args[i]?.value ?? '') ? 2 : 1
   }
-  if (args[i]?.value !== 'exec') {
+  if (
+    args[i]?.value !== 'exec' ||
+    !args.slice(i + 1).some((a) => PNPM_SHELL_MODE.has(a.value ?? ''))
+  ) {
     return []
   }
-  const rest = args.slice(i + 1)
-  const at = rest.findIndex((a) => PNPM_SHELL_MODE.has(a.value ?? ''))
-  const words = at < 0 ? [] : rest.slice(at + 1)
-  const [only] = words
+  const [only] = command
   return [
-    words.length === 1 && only
+    command.length === 1 && only
       ? only.script
-      : { text: words.map((w) => w.value ?? w.raw).join(' '), base: undefined },
+      : { text: command.map((w) => w.value ?? w.raw).join(' '), base: undefined },
   ]
+}
+const wrapperPieces = (w: Wrapper, command: Word[]): Piece[] => {
+  if (w.name === 'env') {
+    return optionValue(w.words, new Set(['-S', '--split-string']))
+  }
+  if (w.name === 'flock') {
+    return optionValue(w.words, new Set(['-c', '--command']))
+  }
+  return w.name === 'pnpm' ? pnpmShellPieces(w.words, command) : []
 }
 export const runnerPieces = (call: Call): Piece[] => {
   const args = call.argv.slice(1)
   const values = args.map((a) => a.value)
   const pieces: Piece[] = []
-  for (const w of call.wrappers) {
-    if (w.name === 'env') {
-      pieces.push(...optionValue(w.words, new Set(['-S', '--split-string'])))
-    } else if (w.name === 'flock') {
-      pieces.push(...optionValue(w.words, new Set(['-c', '--command'])))
-    }
-  }
+  pieces.push(...call.wrappers.flatMap((w) => wrapperPieces(w, call.argv)))
   if (call.name === 'env') {
     pieces.push(...optionValue(args, new Set(['-S', '--split-string'])))
   } else if (call.name === 'find') {
