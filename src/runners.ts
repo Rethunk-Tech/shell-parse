@@ -124,7 +124,7 @@ const gatePieces = (args: Word[]): Piece[] => {
   return []
 }
 // fd's command takes every word after the flag, up to a `;`. `at` indexes the flag in args; `first` is the command's
-// first word, raw.
+// first word.
 export const fdExec = (args: Word[]): { at: number; first: string | undefined } | undefined => {
   const at = args.findIndex((a) => {
     const v = a.value ?? ''
@@ -134,7 +134,7 @@ export const fdExec = (args: Word[]): { at: number; first: string | undefined } 
     return
   }
   const attached = FD_EXEC_ATTACHED.exec(args[at]?.raw ?? '')?.groups?.first
-  return { at, first: attached ?? args[at + 1]?.raw }
+  return { at, first: attached ?? args[at + 1]?.value }
 }
 const fdPieces = (args: Word[]): Piece[] => {
   const exec = fdExec(args)
