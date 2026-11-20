@@ -1,7 +1,7 @@
 // A Bash command as shfmt (mvdan/sh) parses it, read as the calls a shell would run. No engine imports
 // and no spawning: the caller runs `shfmt --to-json` and passes each parse in.
 
-import { runnerPieces } from './runners.ts'
+import { runnerPieces, wrapperCwd } from './runners.ts'
 import { fileScriptOf } from './scriptFile.ts'
 import { markExported, setsAllexport } from './shellExport.ts'
 import {
@@ -217,7 +217,7 @@ const callOf = (
   assigns,
   env: new Map([...[...ctx.scope.env].filter(([k]) => ctx.scope.exported.has(k)), ...assigns]),
   redirects: ctx.redirects,
-  cwd: ctx.scope.cwd,
+  cwd: wrapperCwd(wrappers, ctx.scope.cwd),
   start: r.start,
   end: r.end,
   subst: ctx.subst,

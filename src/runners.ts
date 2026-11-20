@@ -1,12 +1,15 @@
 // Commands that run another command or script from their own arguments (find -exec, env -S, trap,
 // flock, su -c, script -c, parallel, git submodule foreach, git rebase -x). No engine imports.
-import type { Call, Piece, Word } from './shellNodes.ts'
-import { gitVerb } from './shellWords.ts'
+import type { Call, Piece, Word, Wrapper } from './shellNodes.ts'
+import { gitVerb, joinPath } from './shellWords.ts'
 
 const joinedRaw = (words: Word[]) => ({ text: words.map((a) => a.raw).join(' '), base: undefined })
 const SCRIPT_C = /^-[a-zA-Z]*c$/u
 const RUN_FLAG = new Set(['-exec', '-execdir', '-ok', '-okdir'])
 const FD_EXEC = new Set(['-x', '--exec', '-X', '--exec-batch'])
+// `-HX rm`: the exec flag ends a short-option cluster; `--exec=rm` carries its first word attached.
+const FD_EXEC_CLUSTER = /^-[A-Za-z]*[xX]$/u
+const FD_EXEC_ATTACHED = /^--exec(?:-batch)?=(?<first>.*)$/su
 const SCRIPT_FLAG = new Set(['-c', '--command', '-x', '--exec'])
 const FILTERS = new Set([
   '--env-filter',
@@ -120,11 +123,29 @@ const gatePieces = (args: Word[]): Piece[] => {
   }
   return []
 }
-// fd's command takes every word after the flag, up to a `;`.
+// fd's command takes every word after the flag, up to a `;`. `at` indexes the flag in args; `first` is the command's
+// first word, raw.
+export const fdExec = (args: Word[]): { at: number; first: string | undefined } | undefined => {
+  const at = args.findIndex((a) => {
+    const v = a.value ?? ''
+    return FD_EXEC.has(v) || FD_EXEC_CLUSTER.test(v) || FD_EXEC_ATTACHED.test(v)
+  })
+  if (at < 0) {
+    return
+  }
+  const attached = FD_EXEC_ATTACHED.exec(args[at]?.raw ?? '')?.groups?.first
+  return { at, first: attached ?? args[at + 1]?.raw }
+}
 const fdPieces = (args: Word[]): Piece[] => {
-  const at = args.findIndex((a) => FD_EXEC.has(a.value ?? ''))
-  const end = args.findIndex((b, j) => j > at && b.value === ';')
-  return at < 0 ? [] : [joinedRaw(args.slice(at + 1, end < 0 ? undefined : end))]
+  const exec = fdExec(args)
+  if (!exec) {
+    return []
+  }
+  const end = args.findIndex((b, j) => j > exec.at && b.value === ';')
+  const words = args.slice(exec.at + 1, end < 0 ? undefined : end)
+  const attached = FD_EXEC_ATTACHED.exec(args[exec.at]?.raw ?? '')?.groups?.first
+  const text = [...(attached === undefined ? [] : [attached]), ...words.map((a) => a.raw)].join(' ')
+  return [{ text, base: undefined }]
 }
 const toolPieces = (call: Call, args: Word[]): Piece[] => {
   if (call.name === 'fd' || call.name === 'fdfind') {
@@ -187,4 +208,23 @@ export const runnerPieces = (call: Call): Piece[] => {
   }
   pieces.push(...toolPieces(call, args))
   return pieces.filter((p) => p.text.trim() !== '')
+}
+// `env -C dir cmd` and `env --chdir=dir cmd` run cmd in dir.
+const CHDIR_ATTACHED = /^--chdir=(?<dir>.*)$/su
+export const wrapperCwd = (wrappers: Wrapper[], cwd: string | undefined) => {
+  let at = cwd
+  for (const { name, words } of wrappers) {
+    if (name !== 'env') {
+      continue
+    }
+    for (const [i, w] of words.entries()) {
+      const v = w.value ?? ''
+      const spaced = v === '-C' || v === '--chdir'
+      const dir = spaced ? words[i + 1]?.value : CHDIR_ATTACHED.exec(v)?.groups?.dir
+      if (i > 0 && (spaced || CHDIR_ATTACHED.test(v))) {
+        at = dir === undefined || dir === '-' ? undefined : joinPath(at, dir)
+      }
+    }
+  }
+  return at
 }

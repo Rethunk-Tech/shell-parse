@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test'
+import { fdExec } from '../src/runners.ts'
 import { commandsOf, scriptOf } from '../src/shell.ts'
 import { DYN, type Script } from '../src/shellNodes.ts'
 import { calls, parse } from './parse.ts'
@@ -91,4 +92,20 @@ test('the recipe call carries the file it was read from', () => {
   }) as Script
   const files = commandsOf(script, { cwd: '/s', home: '/h' }).map((c) => c.file)
   expect(files).toContain('/s/package.json')
+})
+
+test('fd runs its command from -HX clusters and --exec= too', () => {
+  expect(argv('fd . ~ -HX rm -rf')).toContain('rm -rf')
+  expect(argv('fd . ~ --exec=rm -rf')).toContain('rm -rf')
+  expect(argv('fd . ~ --exec-batch=rm {} ;')).toContain('rm {}')
+  const fd = calls('fd . ~ -HX rm').find((c) => c.name === 'fd')
+  expect(fdExec(fd?.argv.slice(1) ?? [])).toEqual({ at: 2, first: 'rm' })
+})
+
+test('env -C dir runs the script from dir', () => {
+  const ship = '#!/bin/sh\ngit push origin main'
+  const run = (cmd: string, path: string) => withFiles(cmd, { [path]: ship })
+  expect(run('env -C sub ./ship.sh', '/s/sub/ship.sh')).toContain('git push origin main')
+  expect(run('env --chdir=sub ./ship.sh', '/s/sub/ship.sh')).toContain('git push origin main')
+  expect(run('env -C sub ./ship.sh', '/s/ship.sh')).toEqual(['./ship.sh'])
 })
