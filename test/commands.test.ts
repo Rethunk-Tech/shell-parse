@@ -51,3 +51,13 @@ test('fd -x and -X run their command like find -exec', () => {
   expect(argv('fd -e log --exec rm {} ; .')).toContain('rm {}')
   expect(argv('fd -e log')).toEqual(['fd -e log'])
 })
+
+test('gate CMD runs CMD, while gate own verbs and bare flags run no command', () => {
+  expect(argv('gate git push origin main')).toContain('git push origin main')
+  expect(argv('gate -C /r --timeout 5m pkill node')).toContain('pkill node')
+  expect(argv('gate -- run x')).toContain('run x')
+  expect(argv('gate rm -rf "$X"')).toContain('rm -rf ?')
+  expect(argv('gate push')).toEqual(['gate push'])
+  expect(argv('gate -C /r run lint test')).toEqual(['gate -C /r run lint test'])
+  expect(argv('gate --list')).toEqual(['gate --list'])
+})

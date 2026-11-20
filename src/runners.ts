@@ -102,6 +102,24 @@ const sshPieces = (args: Word[]): Piece[] => {
   // ssh hands the remote shell its arguments joined by spaces, so a quoted argument is the text it holds.
   return [{ text: command.map((w) => w.value ?? w.raw).join(' '), base: undefined }]
 }
+// gate's flags that take the next word, and the words it claims as its own rather than a command.
+const GATE_VALUE_FLAG = /^--?(?:log|tail|timeout|budget|mem|jobs|j)$/u
+const GATE_VERBS = new Set(['push', 'completion', 'man', 'doctor', 'fix', 'record', 'run', 'quick'])
+// `gate [-C dir] [flags] CMD...` runs CMD; a verb of gate's own, or no command, runs nothing.
+const gatePieces = (args: Word[]): Piece[] => {
+  let i = 0
+  while (i < args.length) {
+    const v = args[i]?.value ?? ''
+    if (v === '--') {
+      return [joinedRaw(args.slice(i + 1))]
+    }
+    if (!v.startsWith('-')) {
+      return GATE_VERBS.has(v) ? [] : [joinedRaw(args.slice(i))]
+    }
+    i += v === '-C' || GATE_VALUE_FLAG.test(v) ? 2 : 1
+  }
+  return []
+}
 // fd's command takes every word after the flag, up to a `;`.
 const fdPieces = (args: Word[]): Piece[] => {
   const at = args.findIndex((a) => FD_EXEC.has(a.value ?? ''))
@@ -112,7 +130,7 @@ const toolPieces = (call: Call, args: Word[]): Piece[] => {
   if (call.name === 'fd' || call.name === 'fdfind') {
     return fdPieces(args)
   }
-  return []
+  return call.name === 'gate' ? gatePieces(args) : []
 }
 export const runnerPieces = (call: Call): Piece[] => {
   const args = call.argv.slice(1)
