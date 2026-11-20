@@ -124,3 +124,39 @@ test('env -C dir runs the script from dir', () => {
   expect(run('env --chdir=sub ./ship.sh', '/s/sub/ship.sh')).toContain('git push origin main')
   expect(run('env -C sub ./ship.sh', '/s/ship.sh')).toEqual(['./ship.sh'])
 })
+
+test('a command runner runs the command after its own words, so every guard reads it', () => {
+  const runners = [
+    'uv run',
+    'uv run --no-project --python 3.12 --with rich',
+    'pnpm exec',
+    'pnpm -C pkgs/a exec',
+    'yarn exec',
+    'mise exec --',
+    'mise exec node@20 --',
+    'direnv exec .',
+    'poetry run',
+    'dotenv --',
+    'dotenv -e .env --',
+    'op run --',
+    'op run --env-file x.env --',
+    'chronic',
+  ]
+  for (const r of runners) {
+    expect([r, argv(`${r} git push origin main`)]).toEqual([r, ['git push origin main']])
+    expect([r, argv(`${r} pytest`)]).toEqual([r, ['pytest']])
+  }
+  for (const c of [
+    "npx -c 'git push origin main'",
+    "npx --call='git push origin main'",
+    "npm exec -c 'git push origin main'",
+    "npm x --call 'git push origin main'",
+  ]) {
+    expect([c, argv(c).at(-1)]).toEqual([c, 'git push origin main'])
+  }
+  // Controls: a subcommand that runs no command, and npm run's own -c.
+  expect(argv('uv sync')).toEqual(['uv sync'])
+  expect(argv('pnpm install')).toEqual(['pnpm install'])
+  expect(argv("npm run build -c 'git push'")).toEqual(['npm run build -c git push'])
+  expect(argv('npx pytest')).toEqual(['npx pytest'])
+})

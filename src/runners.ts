@@ -4,6 +4,7 @@ import type { Call, Piece, Word, Wrapper } from './shellNodes.ts'
 import { gitVerb, joinPath } from './shellWords.ts'
 
 const joinedRaw = (words: Word[]) => ({ text: words.map((a) => a.raw).join(' '), base: undefined })
+const NPM_EXEC = new Set(['exec', 'x'])
 const SCRIPT_C = /^-[a-zA-Z]*c$/u
 const RUN_FLAG = new Set(['-exec', '-execdir', '-ok', '-okdir'])
 const FD_EXEC = new Set(['-x', '--exec', '-X', '--exec-batch'])
@@ -201,6 +202,12 @@ export const runnerPieces = (call: Call): Piece[] => {
         ),
       ),
     )
+  } else if (
+    call.name === 'npx' ||
+    (call.name === 'npm' && NPM_EXEC.has(values.find((v) => !v?.startsWith('-')) ?? ''))
+  ) {
+    // npx and `npm exec` hand -c's text to a shell.
+    pieces.push(...optionValue(args, new Set(['-c', '--call'])))
   } else if (call.name === 'ssh') {
     pieces.push(...sshPieces(args))
   } else if (call.name === 'git') {

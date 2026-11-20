@@ -20,6 +20,7 @@ import {
   type Wrapper,
   walkNodes,
 } from './shellNodes.ts'
+import { WRAPPERS, type WrapperSpec } from './wrappers.ts'
 
 interface Src {
   text: string
@@ -74,49 +75,6 @@ const QUOTED_ESC = /\\([$`"\\])/gu
 export const ASSIGN_WORD = /^(?<name>[A-Za-z_]\w*)=(?<value>.*)$/su
 const COMPLEX_PARAM = ['Exp', 'Index', 'Length', 'Excl', 'Repl', 'Slice', 'Names', 'Width']
 const LOOKUP = /^-[vV]/u
-// Commands that run the command after their own options, with the options that take a value, and
-// how many words (timeout's duration) sit between those and the command.
-const WRAPPERS = new Map<string, { values: string[]; lead?: number }>([
-  ['sudo', { values: ['-u', '-g', '-h', '-p', '-C', '-D', '-r', '-t', '-U', '-T'] }],
-  ['doas', { values: ['-u', '-C'] }],
-  ['env', { values: ['-u', '-C', '-S', '--unset', '--chdir', '--split-string'] }],
-  ['command', { values: [] }],
-  ['builtin', { values: [] }],
-  ['exec', { values: ['-a'] }],
-  ['nohup', { values: [] }],
-  ['setsid', { values: [] }],
-  ['nice', { values: ['-n', '--adjustment'] }],
-  ['ionice', { values: ['-c', '-n', '-p', '--class', '--classdata'] }],
-  ['stdbuf', { values: ['-i', '-o', '-e'] }],
-  ['time', { values: ['-f', '-o', '--format', '--output'] }],
-  ['timeout', { values: ['-s', '-k', '--signal', '--kill-after'], lead: 1 }],
-  ['xargs', { values: ['-I', '-n', '-P', '-d', '-L', '-s', '-a', '-E', '--delimiter'] }],
-  ['watch', { values: ['-n', '--interval', '-q', '--equexit'] }],
-  ['busybox', { values: [] }],
-  ['unbuffer', { values: [] }],
-  ['strace', { values: ['-o', '-e', '-p', '-s', '-u', '-E', '-P', '-b', '-I'] }],
-  ['ltrace', { values: ['-o', '-e', '-p', '-s', '-u', '-n'] }],
-  ['valgrind', { values: [] }],
-  ['unshare', { values: [] }],
-  ['pkexec', { values: ['--user'] }],
-  ['setpriv', { values: [] }],
-  ['chroot', { values: [], lead: 1 }],
-  ['chrt', { values: [], lead: 1 }],
-  [
-    'flock',
-    {
-      values: ['-w', '--wait', '--timeout', '-E', '--conflict-exit-code', '-c', '--command'],
-      lead: 1,
-    },
-  ],
-  [
-    'systemd-run',
-    {
-      values: ['-p', '-u', '-E', '-M', '--property', '--unit', '--setenv', '--slice', '--machine'],
-    },
-  ],
-])
-
 export const srcOf = (text: string, base: number | undefined): Src => ({
   text,
   at: charIndex(text),
@@ -394,6 +352,24 @@ const skipOptions = (words: Word[], from: number, values: string[], env?: Map<st
   return j
 }
 // The command a wrapper chain (sudo, env, timeout, xargs, ...) finally runs, and the wrappers.
+// Where a wrapper's own words end and its command starts, or -1 when it runs none.
+const commandAt = (
+  words: Word[],
+  at: number,
+  spec: WrapperSpec,
+  env: Map<string, string> | undefined,
+) => {
+  let start = at + 1
+  if (spec.sub !== undefined) {
+    const sub = skipOptions(words, start, spec.values)
+    if (words[sub]?.value !== spec.sub) {
+      return -1
+    }
+    start = sub + 1
+  }
+  const dashes = spec.dashes ? words.findIndex((w, k) => k >= start && w.value === '--') : -1
+  return dashes >= 0 ? dashes + 1 : skipOptions(words, start, spec.values, env) + (spec.lead ?? 0)
+}
 export const peel = (words: Word[]) => {
   const wrappers: Wrapper[] = []
   const assigns = new Map<string, string>()
@@ -405,8 +381,8 @@ export const peel = (words: Word[]) => {
       break
     }
     const env = name === 'env' ? assigns : undefined
-    const j = skipOptions(words, i + 1, spec.values, env) + (spec.lead ?? 0)
-    if (j >= words.length) {
+    const j = commandAt(words, i, spec, env)
+    if (j < 0 || j >= words.length) {
       break
     }
     wrappers.push({ name, words: words.slice(i, j) })
