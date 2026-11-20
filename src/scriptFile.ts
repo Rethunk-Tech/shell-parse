@@ -286,6 +286,11 @@ const npmTargets = (name: string, [head, ...rest]: string[]) => {
 }
 const npmRecipes = (name: string, words: string[], dir: string): Recipe[] => {
   const opts = npmOptions(name, words, dir)
+  // `yarn workspace NAME SCRIPT` names the workspace like -w does.
+  if (name === 'yarn' && opts.words[0] === 'workspace' && opts.words[1] !== undefined) {
+    opts.workspaces.push(opts.words[1])
+    opts.words = opts.words.slice(2)
+  }
   const source = joinPath(opts.where, 'package.json')
   return source === undefined
     ? []

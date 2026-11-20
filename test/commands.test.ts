@@ -193,6 +193,27 @@ test('mise exec tool words and dotenv/op options end where the command starts, w
   expect(argv('mise exec node@20 git push -- x')).toEqual(['git push -- x'])
 })
 
+test('mise x, mise exec -c and yarn workspace NAME exec run the command after them', () => {
+  for (const r of [
+    'mise x node@20',
+    'mise x --',
+    'yarn workspace web exec',
+    'yarn --cwd a workspace web exec',
+  ]) {
+    expect([r, argv(`${r} git push origin main`)]).toEqual([r, ['git push origin main']])
+    expect([r, argv(`${r} pytest`)]).toEqual([r, ['pytest']])
+  }
+  for (const c of [
+    "mise exec -c 'git push origin main'",
+    "mise x node@20 -c 'git push origin main'",
+    'mise exec --command="git push origin main"',
+  ]) {
+    expect([c, argv(c).at(-1)]).toEqual([c, 'git push origin main'])
+  }
+  expect(argv("mise exec -c 'pytest'").at(-1)).toBe('pytest')
+  expect(argv('mise exec -- git log -c')).toEqual(['git log -c'])
+})
+
 test('pnpm exec -c runs its words through a shell', () => {
   for (const c of [
     "pnpm exec -c 'git push origin main'",
@@ -269,6 +290,11 @@ test('npm -w and pnpm --filter name the workspace whose package.json holds the s
   expect(at('pnpm --filter ./pkgs/a ship')).toEqual(['./pkgs/a'])
   expect(at('pnpm -F web run ship')).toEqual(['web'])
   expect(at('npm run ship')).toEqual([undefined])
+  expect(at('yarn workspace web ship')).toEqual(['web'])
+  expect(at('yarn workspace web run ship')).toEqual(['web'])
+  expect(at('yarn --cwd a workspace web ship')).toEqual(['web'])
+  expect(at('bun --filter web run ship')).toEqual(['web'])
+  expect(at('bun --filter=web ship')).toEqual(['web'])
 })
 
 test('workspace roots list their patterns, and a selector names a package by name or path', () => {

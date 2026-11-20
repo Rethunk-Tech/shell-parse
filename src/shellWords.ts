@@ -20,7 +20,7 @@ import {
   type Wrapper,
   walkNodes,
 } from './shellNodes.ts'
-import { WRAPPERS, type WrapperSpec } from './wrappers.ts'
+import { hasShellFlag, WRAPPERS, type WrapperSpec } from './wrappers.ts'
 
 interface Src {
   text: string
@@ -363,11 +363,18 @@ const commandAt = (
 ) => {
   let start = at + 1
   if (spec.sub !== undefined) {
-    const sub = skipOptions(words, start, spec.values)
-    if (words[sub]?.value !== spec.sub) {
+    let sub = skipOptions(words, start, spec.values)
+    if (spec.workspace && words[sub]?.value === 'workspace') {
+      sub = skipOptions(words, sub + 2, spec.values)
+    }
+    const named = words[sub]?.value
+    if (named !== spec.sub && (spec.alias === undefined || named !== spec.alias)) {
       return -1
     }
     start = sub + 1
+    if (spec.shell && hasShellFlag(words, start)) {
+      return -1
+    }
   }
   let end = skipOptions(words, start, spec.values, env)
   const first = end

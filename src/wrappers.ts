@@ -1,4 +1,12 @@
 // The commands that run another command after their own options (sudo, env, timeout, uv run, ...). No engine imports.
+export const SHELL_FLAGS = new Set(['-c', '--command'])
+// Whether a `-c CMD` / `--command=CMD` comes before any `--`.
+export const hasShellFlag = (words: { value?: string }[], from: number) => {
+  const dashes = words.findIndex((w, k) => k >= from && w.value === '--')
+  return words
+    .slice(from, dashes < 0 ? undefined : dashes)
+    .some((w) => SHELL_FLAGS.has(w.value ?? '') || (w.value ?? '').startsWith('--command='))
+}
 // Commands that run the command after their own options, with the options that take a value, and
 // how many words (timeout's duration) sit between those and the command. `sub` is the subcommand that runs it
 // (`uv run`, `pnpm exec`); `dashes` means the command follows the first `--` when there is one (`mise exec
@@ -7,6 +15,12 @@ export interface WrapperSpec {
   values: string[]
   lead?: number
   sub?: string
+  // A second spelling of `sub` (`mise x`).
+  alias?: string
+  // `-c CMD` / `--command CMD` runs CMD in a shell, so the wrapper has no command words.
+  shell?: boolean
+  // `workspace NAME` may come before `sub` (`yarn workspace web exec cmd`).
+  workspace?: boolean
   dashes?: boolean
   // Tool words (`node@20`) that sit between the options and the command, with no `--` after them.
   tools?: boolean
@@ -49,11 +63,13 @@ export const WRAPPERS = new Map<string, WrapperSpec>([
   ],
   ['poetry', { sub: 'run', values: ['-C', '--directory', '-P', '--project'] }],
   ['pnpm', { sub: 'exec', values: ['-C', '--dir', '--filter', '-F'] }],
-  ['yarn', { sub: 'exec', values: ['--cwd'] }],
+  ['yarn', { sub: 'exec', values: ['--cwd'], workspace: true }],
   [
     'mise',
     {
       sub: 'exec',
+      alias: 'x',
+      shell: true,
       dashes: true,
       tools: true,
       values: ['-C', '--cd', '-j', '--jobs', '-E', '--env'],

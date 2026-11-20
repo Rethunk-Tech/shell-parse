@@ -2,6 +2,7 @@
 // flock, su -c, script -c, parallel, git submodule foreach, git rebase -x). No engine imports.
 import type { Call, Piece, Word, Wrapper } from './shellNodes.ts'
 import { gitVerb, joinPath } from './shellWords.ts'
+import { SHELL_FLAGS } from './wrappers.ts'
 
 const joinedRaw = (words: Word[]) => ({ text: words.map((a) => a.raw).join(' '), base: undefined })
 const NPM_EXEC = new Set(['exec', 'x'])
@@ -152,7 +153,16 @@ const toolPieces = (call: Call, args: Word[]): Piece[] => {
   if (call.name === 'fd' || call.name === 'fdfind') {
     return fdPieces(args)
   }
+  if (call.name === 'mise') {
+    return miseExecPieces(args)
+  }
   return call.name === 'gate' ? gatePieces(args) : []
+}
+// `mise exec|x [TOOL@VER]... -c CMD` runs CMD through a shell (a `--` ends mise's own words).
+const miseExecPieces = (args: Word[]): Piece[] => {
+  const sub = args.findIndex((a) => a.value === 'exec' || a.value === 'x')
+  const end = args.findIndex((a) => a.value === '--')
+  return sub < 0 ? [] : optionValue(args.slice(sub + 1, end < 0 ? undefined : end), SHELL_FLAGS)
 }
 const PNPM_VALUE_FLAG = new Set(['-C', '--dir', '--filter', '-F'])
 const PNPM_SHELL_MODE = new Set(['-c', '--shell-mode'])
