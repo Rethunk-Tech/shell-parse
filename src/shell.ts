@@ -22,6 +22,7 @@ import {
   type Word,
   type Wrapper,
 } from './shellNodes.ts'
+import { bindOwnPath, feedOf, output, scriptRuns, shellFromPipe } from './shellPieces.ts'
 import {
   anyIn,
   assignsOf,
@@ -49,7 +50,6 @@ const MAX_UNROLL = 16
 const MAX_PASSES = 6
 const NAME = /^[A-Za-z_]\w*$/u
 const GLOB = /[*?[{]/u
-const ECHO_FLAG = /^-[neE]+$/u
 const READ_VALUES = new Set(['-d', '-i', '-n', '-N', '-p', '-t', '-u'])
 
 function stmtsIn(w: W, ctx: Ctx, stmts: Node[]) {
@@ -74,20 +74,6 @@ function stmt(w: W, ctx: Ctx, s: Node): Call | undefined {
   return
 }
 
-const output = (call: Call): Piece | undefined => {
-  if (call.name !== 'echo' && call.name !== 'printf') {
-    return call.name === 'cat' && call.argv.length === 1
-      ? call.redirects.find((r) => r.body)?.body
-      : undefined
-  }
-  const args = call.argv
-    .slice(1)
-    .filter((a) => !(call.name === 'echo' && ECHO_FLAG.test(a.value ?? '')))
-  const [only] = args
-  return args.length === 1 && only
-    ? only.script
-    : { text: args.map((a) => a.script.text).join(' '), base: undefined }
-}
 const pipeline = (w: W, ctx: Ctx, cmd: Node) => {
   const id = w.out.pipes
   w.out.pipes += 1
@@ -95,7 +81,7 @@ const pipeline = (w: W, ctx: Ctx, cmd: Node) => {
   for (const [stage, s] of pipelineStages(cmd).entries()) {
     const pipes = [...ctx.pipes, { id, stage }]
     const call = stmt(w, { ...ctx, scope: cloneScope(ctx.scope), pipes, stdin: feed }, s)
-    feed = call ? output(call) : undefined
+    feed = feedOf(call)
   }
 }
 const ifClause = (w: W, ctx: Ctx, n: Node | undefined) => {
@@ -225,6 +211,7 @@ const callOf = (
   bounded: ctx.loop && ctx.bounded === true,
   background: ctx.background,
   nested: ctx.nested,
+  opaqueStdin: false,
   stdinArgs: wrappers.some((x) => x.name === 'xargs') || ctx.outer.includes('xargs'),
   pipes: ctx.pipes,
   via: ctx.via,
@@ -247,9 +234,15 @@ const callExpr = (w: W, ctx: Ctx, cmd: Node, own: Redirect[]) => {
   builtin(w, ctx, call)
   defineAliases(ctx.scope, call)
   const script = scriptRun(w, call, own, ctx)
+  call.opaqueStdin = script === undefined && shellFromPipe(call, own, ctx)
   const outer = [...ctx.outer, ...call.wrappers.map((x) => x.name)]
   if (script) {
-    nest(w, ctx, script, { sameShell: call.name === 'eval', via: ctx.via, outer })
+    nest(w, ctx, script, {
+      sameShell: call.name === 'eval',
+      via: ctx.via,
+      outer,
+      runs: scriptRuns(call),
+    })
   }
   for (const piece of runnerPieces(call)) {
     nest(w, ctx, piece, { sameShell: false, via: call.name, outer })
@@ -322,7 +315,14 @@ const nest = (
     sameShell,
     via,
     outer = ctx.outer,
-  }: { sameShell: boolean; via: string | undefined; outer?: readonly string[] },
+    runs,
+  }: {
+    sameShell: boolean
+    via: string | undefined
+    outer?: readonly string[]
+    // How the call reads its script file: run as a program or by a shell (own $0), or sourced.
+    runs?: 'program' | 'source'
+  },
 ) => {
   if (ctx.depth >= MAX_DEPTH) {
     return
@@ -333,6 +333,7 @@ const nest = (
   }
   const file = w.script.nested.get(piece.text)
   const scope = sameShell ? ctx.scope : cloneScope(ctx.scope)
+  bindOwnPath(scope, piece.file, runs)
   const inner = {
     ...ctx,
     src: srcOf(piece.text, piece.base),

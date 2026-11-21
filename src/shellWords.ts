@@ -1,5 +1,7 @@
 // What a shell makes of the words of a command: quotes, escapes, variables, substitutions, redirects
 // and the wrappers that run another command. No engine imports.
+
+import { ansiC } from './ansi.ts'
 import {
   type Call,
   charIndex,
@@ -169,12 +171,23 @@ const tilde = (w: W, text: string) => {
   const home = w.opts.home
   return home !== undefined && (text === '~' || text.startsWith('~/')) ? home + text.slice(1) : text
 }
+// `${BASH_SOURCE[0]}` is the script's own path, like $0 and $BASH_SOURCE.
+const isSourceZero = (p: Node) => {
+  const index = one(p, 'Index')
+  return (
+    str(one(p, 'Param'), 'Value') === 'BASH_SOURCE' &&
+    index !== undefined &&
+    many(index, 'Parts').length === 1 &&
+    str(many(index, 'Parts')[0], 'Value') === '0' &&
+    !COMPLEX_PARAM.some((k) => k !== 'Index' && Boolean(p[k]))
+  )
+}
 const param = (w: W, ctx: Ctx, p: Node): Val => {
-  if (COMPLEX_PARAM.some((k) => Boolean(p[k]))) {
+  if (!isSourceZero(p) && COMPLEX_PARAM.some((k) => Boolean(p[k]))) {
     anyIn(w, ctx, p)
     return dyn(false)
   }
-  const name = str(one(p, 'Param'), 'Value') ?? ''
+  const name = isSourceZero(p) ? 'BASH_SOURCE' : (str(one(p, 'Param'), 'Value') ?? '')
   return {
     text: name === '!' ? LAST_JOB : (ctx.scope.env.get(name) ?? DYN),
     expands: true,
@@ -197,42 +210,6 @@ const cmdSubst = (w: W, ctx: Ctx, p: Node): Val => {
   const call = w.stmt(inner, only)
   return { text: (call && w.opts.known?.(call)) ?? DYN, expands: true, subst: true }
 }
-// $'...' words carry C escapes bash decodes before the call runs: `git $'\x70ush'` is a push.
-const ANSI_C =
-  /\\(?:x(?<hex>[0-9a-fA-F]{1,2})|[uU](?<uni>[0-9a-fA-F]{1,8})|(?<oct>[0-7]{1,3})|c(?<ctl>.)|(?<one>.))/gsu
-const ANSI_C_ONE: Record<string, string> = {
-  a: '\x07',
-  b: '\b',
-  e: '\x1b',
-  E: '\x1b',
-  f: '\f',
-  n: '\n',
-  r: '\r',
-  t: '\t',
-  v: '\v',
-}
-const HEX = 16
-const OCTAL = 8
-const CONTROL_BIT = 0x40
-const ansiC = (text: string) =>
-  text.replace(ANSI_C, (all, ...rest) => {
-    const g = rest.at(-1) as Record<string, string | undefined>
-    if (g.hex !== undefined) {
-      return String.fromCharCode(Number.parseInt(g.hex, HEX))
-    }
-    if (g.uni !== undefined) {
-      return String.fromCodePoint(Number.parseInt(g.uni, HEX))
-    }
-    if (g.oct !== undefined) {
-      return String.fromCharCode(Number.parseInt(g.oct, OCTAL))
-    }
-    if (g.ctl !== undefined) {
-      return String.fromCharCode(
-        (g.ctl.toUpperCase().charCodeAt(0) + CONTROL_BIT) % (2 * CONTROL_BIT),
-      )
-    }
-    return ANSI_C_ONE[g.one ?? ''] ?? g.one ?? all
-  })
 const partValue = (w: W, ctx: Ctx, p: Node, at: { quoted: boolean; lead: boolean }): Val => {
   const { quoted, lead } = at
   switch (p.Type) {

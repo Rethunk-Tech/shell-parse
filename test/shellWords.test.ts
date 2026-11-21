@@ -53,6 +53,7 @@ const asCall = (argv: Word[], over: Partial<Call> = {}): Call => ({
   background: false,
   nested: false,
   stdinArgs: false,
+  opaqueStdin: false,
   pipes: [],
   via: undefined,
   file: undefined,

@@ -179,6 +179,8 @@ export interface Call {
   background: boolean
   nested: boolean
   stdinArgs: boolean
+  // A shell reading its script from a pipe whose producer is not a written-out echo, printf or heredoc.
+  opaqueStdin: boolean
   pipes: Pipe[]
   via: string | undefined
   // The script file this call's line was read from, when a file the command runs holds it.

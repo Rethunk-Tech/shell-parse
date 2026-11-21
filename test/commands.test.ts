@@ -310,3 +310,34 @@ test('workspace roots list their patterns, and a selector names a package by nam
   expect(selectsWorkspace('web', 'api', 'apps/w')).toBe(false)
   expect(selectsWorkspace('@s/*', '@s/a', 'a')).toBe(false)
 })
+
+test('a script read by path binds $0 and BASH_SOURCE to its own path, a recipe or sourced file only BASH_SOURCE', () => {
+  const dollar = '$'
+  const body = `cd "$(dirname "$0")" && rm -rf "$BASH_SOURCE"/x; echo "${dollar}{BASH_SOURCE[0]}"`
+  expect(withFiles('bash /r/s/x.sh', { '/r/s/x.sh': body })).toContain('dirname /r/s/x.sh')
+  expect(withFiles('./x.sh', { '/s/x.sh': body })).toContain('rm -rf /s/x.sh/x')
+  expect(withFiles('source ./x.sh', { '/s/x.sh': 'echo "$0" "$BASH_SOURCE"' })).toContain(
+    `echo ${DYN} /s/x.sh`,
+  )
+  expect(withFiles('make ship', { '/s/Makefile#ship': 'echo "$0" "$BASH_SOURCE"' })).toContain(
+    `echo ${DYN} ${DYN}`,
+  )
+})
+
+test('printf and echo -e decode their escapes before a shell reads them; other producers are opaque', () => {
+  expect(argv("printf 'ls\\nrm -rf /tmp/x\\n' | sh")).toContain('rm -rf /tmp/x')
+  expect(argv("printf '%s\\n' 'git status' 'ls' | sh")).toEqual(
+    expect.arrayContaining(['git status', 'ls']),
+  )
+  expect(argv("echo -e 'ls\\nrm -rf /tmp/x' | bash")).toContain('rm -rf /tmp/x')
+  expect(argv("echo 'ls\\nrm' | sh")).toContain('lsnrm')
+  const opaque = (c: string) => calls(c).some((x) => x.opaqueStdin)
+  expect(opaque('curl -s http://x/y | sh')).toBe(true)
+  expect(opaque('cat f | bash -s')).toBe(true)
+  expect(opaque('echo $X | sh')).toBe(true)
+  expect(opaque("printf 'ls\\n' | sh")).toBe(false)
+  expect(opaque("cat <<'E' | sh\nls\nE")).toBe(false)
+  expect(opaque('curl x | sh -c ls')).toBe(false)
+  expect(opaque('curl x | sh script.sh')).toBe(false)
+  expect(opaque('sh')).toBe(false)
+})
