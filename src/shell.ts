@@ -1,10 +1,10 @@
-// biome-ignore-all lint/style/noExcessiveLinesPerFile: nest's detached-background flag is the only addition; the walk stays one module
 // A Bash command as shfmt (mvdan/sh) parses it, read as the calls a shell would run. No engine imports
 // and no spawning: the caller runs `shfmt --to-json` and passes each parse in.
 
 import { recordFileOps } from './fileOps.ts'
 import { runnerPieces, wrapperCwd } from './runners.ts'
 import { fileScriptOf } from './scriptFile.ts'
+import { completing } from './shellComplete.ts'
 import { markExported, setsAllexport } from './shellExport.ts'
 import {
   BODY_LISTS,
@@ -48,7 +48,6 @@ import {
 
 const MAX_DEPTH = 8
 const MAX_UNROLL = 16
-const MAX_PASSES = 6
 const NAME = /^[A-Za-z_]\w*$/u
 const GLOB = /[*?[{]/u
 const READ_VALUES = new Set(['-d', '-i', '-n', '-N', '-p', '-t', '-u'])
@@ -443,26 +442,9 @@ const walkScript = (script: Script, opts: WalkOptions) => {
 export const commandsOf = (script: Script, opts: WalkOptions = {}) => walkScript(script, opts).calls
 
 type Parse = (text: string) => Node | undefined
-// Parse every script a parsed command runs that is not parsed yet, a few levels down: the loop yields each
-// script text it needs parsed and takes its parse back, so one loop serves a sync and an async parser.
-function* completing(script: Script): Generator<string, Script, Node | undefined> {
-  for (let pass = 0; pass < MAX_PASSES; pass++) {
-    const missing = walkScript(script, { cwd: script.cwd }).missing
-    for (const t of missing) {
-      script.nested.set(t, yield t)
-    }
-    if (missing.size === 0) {
-      return script
-    }
-  }
-  // Past the pass cap the rest is unreadable, which the guards treat as unparsed rather than clean.
-  for (const t of walkScript(script, { cwd: script.cwd }).missing) {
-    script.nested.set(t, undefined)
-  }
-  return script
-}
+const missing = (script: Script) => walkScript(script, { cwd: script.cwd }).missing
 const complete = (script: Script, parse: Parse) => {
-  const run = completing(script)
+  const run = completing(script, missing)
   let step = run.next()
   while (!step.done) {
     step = run.next(parse(step.value))
@@ -473,7 +455,7 @@ export const completeAsync = async (
   script: Script,
   parse: (text: string) => Promise<Node | undefined>,
 ) => {
-  const run = completing(script)
+  const run = completing(script, missing)
   let step = run.next()
   while (!step.done) {
     step = run.next(await parse(step.value))
