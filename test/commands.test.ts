@@ -43,6 +43,8 @@ test('a runner hands the command it runs to the guards, one test per runner', ()
     ['nsenter -t 1 git push -f', 'git push -f'],
     ['firejail git clean -fdx', 'git clean -fdx'],
     ['bwrap --ro-bind / / --dev /dev pkill node', 'pkill node'],
+    ['bwrap --overlay-src /a --overlay /rw /work /dest --tmp-overlay /t pkill node', 'pkill node'],
+    ['bwrap --argv0 x --symlink /a /b --overlay /rw /work /dest pkill node', 'pkill node'],
     ['systemd-inhibit --why x pkill node', 'pkill node'],
     ['toolbox run git push -f', 'git push -f'],
     ['distrobox enter box -- pkill node', 'pkill node'],
@@ -69,6 +71,8 @@ test('a script the command makes by tee, cp, ln or base64 -d is read as the body
     ['ln -sf /s/e.sh /s/l.sh; bash /s/l.sh', { '/s/e.sh': 'pkill node' }],
     ['cp /s/e.sh /s/c.sh; mv /s/c.sh /s/d.sh; bash /s/d.sh', { '/s/e.sh': 'pkill node' }],
     ['base64 -d <<< cGtpbGwgbm9kZQo= > /s/b.sh; bash /s/b.sh', {}],
+    ['cp /s/e.sh /s/f.sh /s/d/; bash /s/d/e.sh', { '/s/e.sh': 'pkill node', '/s/f.sh': 'ls' }],
+    ['cp /s/e.sh /s/f.sh /s/d/; bash /s/d/f.sh', { '/s/e.sh': 'ls', '/s/f.sh': 'pkill node' }],
   ] as const) {
     expect([c, withFiles(c, files)]).toEqual([c, expect.arrayContaining(['pkill node'])])
   }

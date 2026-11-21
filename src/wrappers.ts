@@ -26,6 +26,8 @@ export interface WrapperSpec {
   tools?: boolean
   // Options that take two words (`bwrap --bind SRC DEST`).
   pairs?: string[]
+  // Options that take three words (`bwrap --overlay RWSRC WORKDIR DEST`).
+  triples?: string[]
   // Options that name what `lead` would count (`taskset -c LIST cmd` has no mask word).
   leadUnless?: string[]
 }
@@ -144,7 +146,14 @@ export const WRAPPERS = new Map<string, WrapperSpec>([
         '--args',
         '--perms',
         '--size',
+        '--argv0',
+        '--add-seccomp-fd',
+        '--userns-block-fd',
+        '--overlay-src',
+        '--tmp-overlay',
+        '--ro-overlay',
       ],
+      triples: ['--overlay'],
       pairs: [
         '--bind',
         '--bind-try',

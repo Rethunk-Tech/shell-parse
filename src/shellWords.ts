@@ -314,7 +314,7 @@ export const assignsOf = (w: W, ctx: Ctx, nodes: Node[]) => {
 const skipOptions = (
   words: Word[],
   from: number,
-  { values, pairs = [] }: Pick<WrapperSpec, 'values' | 'pairs'>,
+  { values, pairs = [], triples = [] }: Pick<WrapperSpec, 'values' | 'pairs' | 'triples'>,
   env?: Map<string, string>,
 ) => {
   let j = from
@@ -329,8 +329,14 @@ const skipOptions = (
     } else if (v === undefined || !v.startsWith('-') || v === '-') {
       return j
     }
-    const taken = pairs.includes(v ?? '') ? 3 : Number(values.includes(v ?? '')) + 1
-    j += taken
+    const named = v ?? ''
+    let extra = Number(values.includes(named))
+    if (pairs.includes(named)) {
+      extra = 2
+    } else if (triples.includes(named)) {
+      extra = 3
+    }
+    j += 1 + extra
   }
   return j
 }

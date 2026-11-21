@@ -4,6 +4,8 @@
 
 ### Fixed
 
+- bwrap's three-word `--overlay RWSRC WORKDIR DEST` and its single-value `--overlay-src`, `--tmp-overlay`, `--ro-overlay`, `--argv0`, `--add-seccomp-fd` and `--userns-block-fd` no longer hide the command bwrap runs.
+- `cp`, `mv` and `ln` with more than two operands track each source into `DIR/<name>` of the last one.
 - A shell given `-s` or a stdin path (`bash -s ARGS <<EOF`, `bash /dev/stdin`) reads its commands from stdin even when a file of that operand name is on record, so its heredoc is walked.
 - `gate push` runs `push` as a program, so it is no longer read as one of gate's own verbs; `actions-allowed` is.
 

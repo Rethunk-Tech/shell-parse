@@ -2,7 +2,7 @@
 // a file, so the run is read as the body that will be there. No engine imports.
 import { type Call, DYN, type Piece, type Redirect, type Script, type Word } from './shellNodes.ts'
 import { output } from './shellPieces.ts'
-import { type Ctx, joinPath, type W } from './shellWords.ts'
+import { type Ctx, joinPath, nameOf, type W } from './shellWords.ts'
 
 const COPIERS = new Set(['cp', 'mv', 'ln'])
 const DECODE = new Set(['-d', '-D', '--decode'])
@@ -69,10 +69,14 @@ export const recordFileOps = (w: W, call: Call, own: Redirect[], ctx: Ctx) => {
     for (const a of args) {
       set(abs(a), fed?.text)
     }
-  } else if (COPIERS.has(call.name) && args.length === 2) {
-    const to = abs(args[1])
-    if (to !== undefined) {
-      copy(abs(args[0]), to)
+  } else if (COPIERS.has(call.name) && args.length >= 2) {
+    // With more than two operands the last is a directory, and each source lands in it under its own name.
+    const dir = abs(args.at(-1))
+    for (const a of args.slice(0, -1)) {
+      const to = args.length === 2 || dir === undefined ? dir : joinPath(dir, nameOf(a))
+      if (to !== undefined) {
+        copy(abs(a), to)
+      }
     }
   } else if (target !== undefined) {
     set(abs(target.target), redirected(call, args, fed))
