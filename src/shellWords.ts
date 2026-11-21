@@ -474,12 +474,3 @@ export const scriptFileOf = (call: Call, cwd: string | undefined) => {
     ? joinPath(call.cwd ?? cwd, name.value)
     : undefined
 }
-export const recordWrittenScript = (w: W, call: Call, body: Piece | undefined) => {
-  const dest = call.redirects.find((r) => r.op.includes('>'))?.target
-  const path = body?.text && dest?.value ? joinPath(call.cwd ?? w.opts.cwd, dest.value) : undefined
-  if (path?.startsWith('/') === true && body?.text) {
-    const files = w.script.files ?? new Map<string, string>()
-    w.script.files = files
-    files.set(path, body.text)
-  }
-}

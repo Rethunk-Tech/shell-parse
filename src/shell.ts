@@ -1,6 +1,7 @@
 // A Bash command as shfmt (mvdan/sh) parses it, read as the calls a shell would run. No engine imports
 // and no spawning: the caller runs `shfmt --to-json` and passes each parse in.
 
+import { recordFileOps } from './fileOps.ts'
 import { runnerPieces, wrapperCwd } from './runners.ts'
 import { fileScriptOf } from './scriptFile.ts'
 import { markExported, setsAllexport } from './shellExport.ts'
@@ -22,7 +23,7 @@ import {
   type Word,
   type Wrapper,
 } from './shellNodes.ts'
-import { bindOwnPath, feedOf, output, scriptRuns, shellFromPipe } from './shellPieces.ts'
+import { bindOwnPath, feedOf, scriptRuns, shellFromPipe } from './shellPieces.ts'
 import {
   anyIn,
   assignsOf,
@@ -36,7 +37,6 @@ import {
   peel,
   range,
   readsStdin,
-  recordWrittenScript,
   redirect,
   SHELLS,
   shellFlags,
@@ -230,7 +230,7 @@ const callExpr = (w: W, ctx: Ctx, cmd: Node, own: Redirect[]) => {
   }
   const call = callOf(ctx, peeled, assigns, range(ctx, cmd))
   w.out.calls.push(call)
-  recordWrittenScript(w, call, output(call))
+  recordFileOps(w, call, own, ctx)
   builtin(w, ctx, call)
   defineAliases(ctx.scope, call)
   const script = scriptRun(w, call, own, ctx)

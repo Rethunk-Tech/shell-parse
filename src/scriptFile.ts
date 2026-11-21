@@ -317,9 +317,22 @@ export const recipesOf = (call: Call, cwd: string | undefined): Recipe[] => {
   return NPMS.has(call.name) ? npmRecipes(call.name, known, dir) : []
 }
 
+// A file's text: what was read or written, or the source a copy or link of it names.
+const readOf = (w: W, file: string) => {
+  let at = file
+  for (let hops = 0; hops < 8; hops++) {
+    const text = w.script.files?.get(at)
+    const next = w.script.copies?.get(at)
+    if (text !== undefined || next === undefined) {
+      return text
+    }
+    at = next
+  }
+  return
+}
 export const fileScriptOf = (w: W, call: Call): Piece | undefined => {
   const file = scriptFileOf(call, w.opts.cwd)
-  const read = file === undefined ? undefined : w.script.files?.get(file)
+  const read = file === undefined ? undefined : readOf(w, file)
   if (read !== undefined) {
     return { text: read, base: undefined, file }
   }

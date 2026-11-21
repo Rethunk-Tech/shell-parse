@@ -17,7 +17,6 @@ import {
   peel,
   range,
   readsStdin,
-  recordWrittenScript,
   redirect,
   scriptFileOf,
   shellFlags,
@@ -572,23 +571,4 @@ test('shellFlags, readsStdin, aliases, bash < file and recorded script writes', 
   expect(scriptFileOf(asCall([wd('ksh'), wd('t.sh')], { cwd: '/s' }), undefined)).toBe('/s/t.sh')
   expect(scriptFileOf(asCall([wd('mksh'), wd('t.sh')], { cwd: '/s' }), undefined)).toBe('/s/t.sh')
   expect(scriptFileOf(asCall([wd('ash'), wd('t.sh')], { cwd: '/s' }), undefined)).toBe('/s/t.sh')
-  const { w } = walk('echo')
-  const body = { text: 'git push', base: 0 }
-  const to = (dest: string) => ({
-    op: '>',
-    fd: undefined,
-    target: wd(dest),
-    body: undefined,
-  })
-  recordWrittenScript(w, asCall([wd('cat')], { redirects: [to('/s/x.sh')] }), body)
-  expect(w.script.files?.get('/s/x.sh')).toBe('git push')
-  const { w: empty } = walk('echo')
-  recordWrittenScript(empty, asCall([wd('cat')], { redirects: [to('/s/x.sh')] }), {
-    text: '',
-    base: 0,
-  })
-  expect(empty.script.files).toBeUndefined()
-  const { w: tilde } = walk('echo')
-  recordWrittenScript(tilde, asCall([wd('cat')], { redirects: [to('~/x')] }), body)
-  expect(tilde.script.files).toBeUndefined()
 })

@@ -136,6 +136,10 @@ export interface Script {
   files?: Map<string, string>
   // Where relative script paths resolve when the parse is completed.
   cwd?: string | undefined
+  // Files this command writes whose content only the run knows: a script run from one is unread.
+  unknown?: Set<string>
+  // cp, mv and ln destinations whose source is a file on disk, not yet read: destination -> source.
+  copies?: Map<string, string>
 }
 export interface Word {
   // The word as the shell would pass it, DYN where only the run knows.
