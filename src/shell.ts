@@ -1,3 +1,4 @@
+// biome-ignore-all lint/style/noExcessiveLinesPerFile: nest's detached-background flag is the only addition; the walk stays one module
 // A Bash command as shfmt (mvdan/sh) parses it, read as the calls a shell would run. No engine imports
 // and no spawning: the caller runs `shfmt --to-json` and passes each parse in.
 
@@ -327,11 +328,11 @@ const nest = (
   if (ctx.depth >= MAX_DEPTH) {
     return
   }
-  if (!w.script.nested.has(piece.text)) {
+  const file = w.script.nested.get(piece.text)
+  if (!file) {
     w.out.missing.add(piece.text)
     return
   }
-  const file = w.script.nested.get(piece.text)
   const scope = sameShell ? ctx.scope : cloneScope(ctx.scope)
   bindOwnPath(scope, piece.file, runs)
   const inner = {
@@ -342,6 +343,7 @@ const nest = (
     via,
     outer,
     file: piece.file ?? ctx.file,
+    background: ctx.background || piece.background === true,
   }
   stmtsIn(w, { ...inner, nested: true, stdin: undefined, redirects: [] }, many(file, 'Stmts'))
 }

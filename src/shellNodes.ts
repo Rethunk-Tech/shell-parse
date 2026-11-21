@@ -120,6 +120,8 @@ export interface Piece {
   base: number | undefined
   // The script file the text was read from.
   file?: string
+  // The text runs detached from the call that carries it.
+  background?: boolean
 }
 export interface ShellEnv {
   aliases: Map<string, string>

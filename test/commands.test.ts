@@ -411,3 +411,12 @@ test('printf and echo -e decode their escapes before a shell reads them; other p
   expect(opaque('curl x | sh script.sh')).toBe(false)
   expect(opaque('sh')).toBe(false)
 })
+
+test('a tmux command runs its shell command detached, except run-shell and if-shell without -b', () => {
+  const inner = (command: string) => calls(command).find((c) => c.name === 'sleep')?.background
+  expect(inner("tmux new-session -d 'sleep 60'")).toBe(true)
+  expect(inner("tmux send-keys -t s 'sleep 60' Enter")).toBe(true)
+  expect(inner("tmux run-shell -b 'sleep 60'")).toBe(true)
+  expect(inner("tmux run-shell 'sleep 60'")).toBe(false)
+  expect(inner("tmux if-shell 'sleep 60'")).toBe(false)
+})

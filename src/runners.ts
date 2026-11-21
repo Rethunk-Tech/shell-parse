@@ -160,6 +160,8 @@ const fdPieces = (args: Word[]): Piece[] => {
 }
 // tmux options and per-command flags that take a value, so it is not read as the shell command.
 const TMUX_VALUE_FLAG = new Set(['-c', '-e', '-F', '-n', '-s', '-t', '-x', '-y', '-N', '-l', '-T'])
+const TMUX_BACKGROUND = /^-[A-Za-z]*b/u
+const TMUX_WAITS = new Set(['run-shell', 'run', 'if-shell', 'if'])
 const TMUX_RUNS = new Set([
   'new-session',
   'new',
@@ -188,9 +190,13 @@ const tmuxPieces = (args: Word[]): Piece[] => {
     const v = a.value ?? ''
     return !(v.startsWith('-') || TMUX_VALUE_FLAG.has(rest[i - 1]?.value ?? ''))
   })
+  const verb = args[at]?.value ?? ''
+  // run-shell and if-shell hold the client until the command ends, unless -b; the rest start detached.
+  const waits =
+    TMUX_WAITS.has(verb) && !args.slice(at + 1).some((a) => TMUX_BACKGROUND.test(a.value ?? ''))
   return words.length === 0
     ? []
-    : [{ text: words.map((a) => a.value ?? a.raw).join(' '), base: undefined }]
+    : [{ text: words.map((a) => a.value ?? a.raw).join(' '), base: undefined, background: !waits }]
 }
 const toolPieces = (call: Call, args: Word[]): Piece[] => {
   if (call.name === 'tmux') {
