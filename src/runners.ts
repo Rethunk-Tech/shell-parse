@@ -109,7 +109,16 @@ const sshPieces = (args: Word[]): Piece[] => {
 }
 // gate's flags that take the next word, and the words it claims as its own rather than a command.
 const GATE_VALUE_FLAG = /^--?(?:log|tail|timeout|budget|mem|jobs|j)$/u
-const GATE_VERBS = new Set(['push', 'completion', 'man', 'doctor', 'fix', 'record', 'run', 'quick'])
+const GATE_VERBS = new Set([
+  'actions-allowed',
+  'completion',
+  'man',
+  'doctor',
+  'fix',
+  'record',
+  'run',
+  'quick',
+])
 // `gate [-C dir] [flags] CMD...` runs CMD; a verb of gate's own, or no command, runs nothing.
 const gatePieces = (args: Word[]): Piece[] => {
   let i = 0

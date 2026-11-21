@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- `gate push` runs `push` as a program, so it is no longer read as one of gate's own verbs; `actions-allowed` is.
+
 ### Added
 
 - A script read by path binds `$0` and `BASH_SOURCE` (also `${BASH_SOURCE[0]}`) to its own path, so `$(dirname "$0")` resolves. A sourced file binds only `BASH_SOURCE`.
