@@ -311,7 +311,12 @@ export const assignsOf = (w: W, ctx: Ctx, nodes: Node[]) => {
   return bound
 }
 
-const skipOptions = (words: Word[], from: number, values: string[], env?: Map<string, string>) => {
+const skipOptions = (
+  words: Word[],
+  from: number,
+  { values, pairs = [] }: Pick<WrapperSpec, 'values' | 'pairs'>,
+  env?: Map<string, string>,
+) => {
   let j = from
   while (j < words.length) {
     const word_ = words[j]
@@ -324,7 +329,8 @@ const skipOptions = (words: Word[], from: number, values: string[], env?: Map<st
     } else if (v === undefined || !v.startsWith('-') || v === '-') {
       return j
     }
-    j += v !== undefined && values.includes(v) ? 2 : 1
+    const taken = pairs.includes(v ?? '') ? 3 : Number(values.includes(v ?? '')) + 1
+    j += taken
   }
   return j
 }
@@ -340,9 +346,9 @@ const commandAt = (
 ) => {
   let start = at + 1
   if (spec.sub !== undefined) {
-    let sub = skipOptions(words, start, spec.values)
+    let sub = skipOptions(words, start, spec)
     if (spec.workspace && words[sub]?.value === 'workspace') {
-      sub = skipOptions(words, sub + 2, spec.values)
+      sub = skipOptions(words, sub + 2, spec)
     }
     const named = words[sub]?.value
     if (named !== spec.sub && (spec.alias === undefined || named !== spec.alias)) {
@@ -353,7 +359,7 @@ const commandAt = (
       return -1
     }
   }
-  let end = skipOptions(words, start, spec.values, env)
+  let end = skipOptions(words, start, spec, env)
   const first = end
   while (spec.tools && TOOL_WORD.test(words[end]?.value ?? '')) {
     end += 1
@@ -364,7 +370,10 @@ const commandAt = (
   // With no tool word named, a `--` further on may follow a bare tool name (`mise exec node -- cmd`).
   const dashes =
     spec.dashes && end === first ? words.findIndex((w, k) => k >= start && w.value === '--') : -1
-  return dashes >= 0 ? dashes + 1 : end + (spec.lead ?? 0)
+  const named = words
+    .slice(start, first)
+    .some((x) => spec.leadUnless?.includes(x.value ?? '') ?? false)
+  return dashes >= 0 ? dashes + 1 : end + (named ? 0 : (spec.lead ?? 0))
 }
 export const peel = (words: Word[]) => {
   const wrappers: Wrapper[] = []
@@ -438,14 +447,15 @@ export const shellFlags = (args: Word[]) => {
     dashC ||= v.startsWith('-') && !v.startsWith('--') && v.includes('c')
     dashS ||= v.startsWith('-') && !v.startsWith('--') && v.includes('s')
   }
-  return { i, dashC, dashS }
+  // `bash /dev/stdin` reads the commands it is fed, as -s does.
+  return { i, dashC, dashS: dashS || STDIN_FILES.has(args[i]?.value ?? '') }
 }
 // at and batch queue the commands they read on stdin; `source /dev/stdin` runs them now.
 export const readsStdin = (call: Call, args: Word[]) =>
   call.name === 'at' ||
   call.name === 'batch' ||
   ((call.name === 'source' || call.name === '.') && STDIN_FILES.has(args[0]?.value ?? ''))
-export const SHELLS = new Set(['bash', 'sh', 'zsh', 'dash', 'ksh', 'mksh', 'ash'])
+export const SHELLS = new Set(['bash', 'sh', 'zsh', 'dash', 'ksh', 'mksh', 'ash', 'fish'])
 // Before the script name, -c runs its argument instead and -n only parses: no script file runs.
 const NO_FILE = /^-[a-z]*[cn]/u
 // The script file a shell or source call runs, as an absolute path, when its name is literal.
@@ -455,6 +465,10 @@ export const scriptFileOf = (call: Call, cwd: string | undefined) => {
   // `bash < file` runs the file as `bash file` does.
   const fed = call.redirects.find((r) => r.op === '<' && (r.fd === undefined || r.fd === '0'))
   const name = at < 0 && SHELLS.has(call.name) ? fed?.target : call.argv[at]
+  // With -s the operands are positional parameters, and a stdin path is no file: the commands come on stdin.
+  if (shellFlags(call.argv.slice(1)).dashS) {
+    return
+  }
   const pre = call.argv.slice(1, at < 0 ? undefined : at)
   return runs && !pre.some((a) => NO_FILE.test(a.value ?? '')) && name?.value !== undefined
     ? joinPath(call.cwd ?? cwd, name.value)

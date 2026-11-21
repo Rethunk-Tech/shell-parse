@@ -24,6 +24,10 @@ export interface WrapperSpec {
   dashes?: boolean
   // Tool words (`node@20`) that sit between the options and the command, with no `--` after them.
   tools?: boolean
+  // Options that take two words (`bwrap --bind SRC DEST`).
+  pairs?: string[]
+  // Options that name what `lead` would count (`taskset -c LIST cmd` has no mask word).
+  leadUnless?: string[]
 }
 export const WRAPPERS = new Map<string, WrapperSpec>([
   [
@@ -103,6 +107,89 @@ export const WRAPPERS = new Map<string, WrapperSpec>([
   ['pkexec', { values: ['--user'] }],
   ['setpriv', { values: [] }],
   ['chroot', { values: [], lead: 1 }],
+  [
+    'taskset',
+    { values: ['-c', '--cpu-list'], lead: 1, leadUnless: ['-c', '--cpu-list', '-p', '--pid'] },
+  ],
+  ['nsenter', { values: ['-t', '--target', '-S', '--setuid', '-G', '--setgid'] }],
+  ['firejail', { values: [] }],
+  [
+    'bwrap',
+    {
+      values: [
+        '--chdir',
+        '--uid',
+        '--gid',
+        '--hostname',
+        '--dev',
+        '--proc',
+        '--tmpfs',
+        '--dir',
+        '--mqueue',
+        '--remount-ro',
+        '--unsetenv',
+        '--cap-add',
+        '--cap-drop',
+        '--seccomp',
+        '--lock-file',
+        '--sync-fd',
+        '--userns',
+        '--userns2',
+        '--pidns',
+        '--exec-label',
+        '--file-label',
+        '--block-fd',
+        '--info-fd',
+        '--json-status-fd',
+        '--args',
+        '--perms',
+        '--size',
+      ],
+      pairs: [
+        '--bind',
+        '--bind-try',
+        '--ro-bind',
+        '--ro-bind-try',
+        '--dev-bind',
+        '--dev-bind-try',
+        '--symlink',
+        '--setenv',
+        '--file',
+        '--bind-data',
+        '--ro-bind-data',
+        '--chmod',
+        '--arg',
+      ],
+    },
+  ],
+  ['systemd-inhibit', { values: ['--what', '--who', '--why', '--mode'] }],
+  ['toolbox', { sub: 'run', values: ['-c', '--container', '-d', '--distro', '-r', '--release'] }],
+  [
+    'distrobox',
+    {
+      sub: 'enter',
+      dashes: true,
+      lead: 1,
+      leadUnless: ['-n', '--name'],
+      values: ['-n', '--name', '-a', '--additional-flags'],
+    },
+  ],
+  [
+    'podman',
+    {
+      sub: 'unshare',
+      values: [
+        '--root',
+        '--runroot',
+        '--storage-driver',
+        '--storage-opt',
+        '--log-level',
+        '-c',
+        '-r',
+      ],
+    },
+  ],
+  ['screen', { values: ['-S', '-dmS', '-DmS', '-t', '-c', '-p', '-e', '-h', '-T', '-s'] }],
   ['chrt', { values: [], lead: 1 }],
   [
     'flock',

@@ -158,7 +158,47 @@ const fdPieces = (args: Word[]): Piece[] => {
   const text = [...(attached === undefined ? [] : [attached]), ...words.map((a) => a.raw)].join(' ')
   return [{ text, base: undefined }]
 }
+// tmux options and per-command flags that take a value, so it is not read as the shell command.
+const TMUX_VALUE_FLAG = new Set(['-c', '-e', '-F', '-n', '-s', '-t', '-x', '-y', '-N', '-l', '-T'])
+const TMUX_RUNS = new Set([
+  'new-session',
+  'new',
+  'new-window',
+  'neww',
+  'split-window',
+  'splitw',
+  'run-shell',
+  'run',
+  'respawn-pane',
+  'respawnp',
+  'respawn-window',
+  'respawnw',
+  'send-keys',
+  'send',
+  'if-shell',
+  'if',
+])
+// A tmux command that starts a shell command, or types text into one: the words after its flags.
+const tmuxPieces = (args: Word[]): Piece[] => {
+  const at = args.findIndex((a) => TMUX_RUNS.has(a.value ?? ''))
+  if (at < 0) {
+    return []
+  }
+  const words = args.slice(at + 1).filter((a, i, rest) => {
+    const v = a.value ?? ''
+    return !(v.startsWith('-') || TMUX_VALUE_FLAG.has(rest[i - 1]?.value ?? ''))
+  })
+  return words.length === 0
+    ? []
+    : [{ text: words.map((a) => a.value ?? a.raw).join(' '), base: undefined }]
+}
 const toolPieces = (call: Call, args: Word[]): Piece[] => {
+  if (call.name === 'tmux') {
+    return tmuxPieces(args)
+  }
+  if (call.name === 'nix-shell') {
+    return optionValue(args, new Set(['--run', '--command']))
+  }
   if (call.name === 'fd' || call.name === 'fdfind') {
     return fdPieces(args)
   }

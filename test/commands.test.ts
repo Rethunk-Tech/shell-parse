@@ -18,6 +18,49 @@ test('commandsOf lists every call that runs, in order, and no text that only men
   expect(argv('echo "x $(git stash) `date`"')).toEqual(['git stash', 'date', 'echo x ? ?'])
 })
 
+test('a shell fed by -s or a stdin path reads its heredoc though a file of that operand is on record', () => {
+  const read = (c: string) =>
+    withFiles(c, { '/s/a': '', '/s/1': '' }).filter(
+      (w) => w.startsWith('git push') || w.startsWith('pkill'),
+    )
+  for (const c of [
+    "bash -s -- a <<'E'\ngit push --force origin main\nE",
+    "bash -es -- 1 <<'E'\ngit push -f\nE",
+    "bash /dev/stdin <<< 'pkill node'",
+    "bash /proc/self/fd/0 <<< 'pkill node'",
+    "cat <<'E' | bash /dev/stdin\npkill node\nE",
+  ]) {
+    expect([c, read(c).length]).toEqual([c, 1])
+  }
+  // A real script operand is still the file, whose text is what runs.
+  expect(withFiles('bash a', { '/s/a': 'pkill node' })).toContain('pkill node')
+})
+
+test('a runner hands the command it runs to the guards, one test per runner', () => {
+  for (const [c, ran] of [
+    ['taskset -c 0 git push --force origin main', 'git push --force origin main'],
+    ['taskset 0x3 git push -f', 'git push -f'],
+    ['nsenter -t 1 git push -f', 'git push -f'],
+    ['firejail git clean -fdx', 'git clean -fdx'],
+    ['bwrap --ro-bind / / --dev /dev pkill node', 'pkill node'],
+    ['systemd-inhibit --why x pkill node', 'pkill node'],
+    ['toolbox run git push -f', 'git push -f'],
+    ['distrobox enter box -- pkill node', 'pkill node'],
+    ['distrobox enter -n box -- pkill node', 'pkill node'],
+    ['podman unshare pkill node', 'pkill node'],
+    ['screen -dm git reset --hard', 'git reset --hard'],
+    ['screen -dmS job git reset --hard', 'git reset --hard'],
+    ["fish -c 'git push -f'", 'git push -f'],
+    ["tmux new-session -d 'git push --force'", 'git push --force'],
+    ["tmux send-keys -t s 'git push -f' Enter", 'git push -f Enter'],
+    ["nix-shell --run 'pkill node'", 'pkill node'],
+  ] as const) {
+    expect([c, argv(c)]).toEqual([c, expect.arrayContaining([ran])])
+  }
+  // Runners with no command of their own run nothing.
+  expect(argv('podman ps')).toEqual(['podman ps'])
+})
+
 test('a bash -c script is read as the calls it runs', () => {
   expect(argv("bash -c 'ls /a; cat b'")).toContain('cat b')
 })
