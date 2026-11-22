@@ -4,7 +4,7 @@
 
 ### Fixed
 
-- `commandsOf` keeps its last 16 walks across scripts, keyed by command text, script file contents, alias and function snapshot and options, so a repeat guard of an unchanged 108 KB script is a lookup; an edited file is walked again.
+- `commandsOf` keeps its last 48 walks across scripts, keyed by command text, script file contents, alias and function snapshot and options, so a repeat guard of an unchanged 108 KB script is a lookup; an edited file is walked again.
 - A script whose functions call each other in a tree no longer walks every call's body again without limit: past 10,000 expansions a body is walked once, where it is declared. A 100 KB script of such helpers took 22 s to walk.
 - A command tmux starts (`new-session`, `new-window`, `split-window`, `send-keys`, and `run-shell` or `if-shell` with `-b`) is read as detached, so its calls carry `background`.
 - bwrap's three-word `--overlay RWSRC WORKDIR DEST` and its single-value `--overlay-src`, `--tmp-overlay`, `--ro-overlay`, `--argv0`, `--add-seccomp-fd` and `--userns-block-fd` no longer hide the command bwrap runs.

@@ -16,7 +16,7 @@ const walkKey = (script: Script, opts: WalkOptions) =>
 // Walks of other scripts, kept across commands: the same command text over the same script files, alias and
 // function snapshot and options gives the same calls, so a repeat guard of an unchanged script is a lookup. A walk
 // that recorded files into the script is kept with them, and a hit records them again.
-const KEPT = 16
+const KEPT = 48
 const ids = new WeakMap<object, number>()
 let nextId = 0
 const idOf = (o: object | undefined) => {
