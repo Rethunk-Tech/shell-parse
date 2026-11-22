@@ -361,13 +361,13 @@ const skipOptions = (
 // A tool word: `node@20`, `npm:prettier@latest`.
 const TOOL_WORD = /^[^-\s][^\s@]*@\S+$/u
 // Where a wrapper's own words end and its command starts, or -1 when it runs none.
-const commandAt = (
-  words: Word[],
-  at: number,
-  spec: WrapperSpec,
-  env: Map<string, string> | undefined,
-) => {
-  let start = at + 1
+const commandAt = (words: Word[], at: number, spec: WrapperSpec, env?: Map<string, string>) => {
+  const start = at + 1
+  // A wrapper whose -c hands its text to a shell runs no command of its own.
+  if (spec.shell && hasShellFlag(words, start)) {
+    return -1
+  }
+  let from = start
   if (spec.sub !== undefined) {
     let sub = skipOptions(words, start, spec)
     if (spec.workspace && words[sub]?.value === 'workspace') {
@@ -377,12 +377,9 @@ const commandAt = (
     if (named !== spec.sub && (spec.alias === undefined || named !== spec.alias)) {
       return -1
     }
-    start = sub + 1
-    if (spec.shell && hasShellFlag(words, start)) {
-      return -1
-    }
+    from = sub + 1
   }
-  let end = skipOptions(words, start, spec, env)
+  let end = skipOptions(words, from, spec, env)
   const first = end
   while (spec.tools && TOOL_WORD.test(words[end]?.value ?? '')) {
     end += 1
@@ -392,9 +389,9 @@ const commandAt = (
   }
   // With no tool word named, a `--` further on may follow a bare tool name (`mise exec node -- cmd`).
   const dashes =
-    spec.dashes && end === first ? words.findIndex((w, k) => k >= start && w.value === '--') : -1
+    spec.dashes && end === first ? words.findIndex((w, k) => k >= from && w.value === '--') : -1
   const named = words
-    .slice(start, first)
+    .slice(from, first)
     .some((x) => spec.leadUnless?.includes(x.value ?? '') ?? false)
   return dashes >= 0 ? dashes + 1 : end + (named ? 0 : (spec.lead ?? 0))
 }

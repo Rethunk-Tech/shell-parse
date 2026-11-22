@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- `npm exec`, `npm x`, `npx` and `bunx` are read as running the command after their own options, as `pnpm exec` and `yarn exec` already were; `npm`'s own verbs still run nothing.
 - `parallel -j4` with no command runs nothing, instead of reading its last flag as the command.
 - A script file edited in place is walked again: the walk key holds the file contents, not just how many entries the maps have.
 - `set +a` and `set +o allexport` turn allexport off, and `set -- -a` names positional parameters rather than turning it on.

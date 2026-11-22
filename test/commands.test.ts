@@ -327,7 +327,19 @@ test('a command runner runs the command after its own words, so every guard read
   expect(argv('uv sync')).toEqual(['uv sync'])
   expect(argv('pnpm install')).toEqual(['pnpm install'])
   expect(argv("npm run build -c 'git push'")).toEqual(['npm run build -c git push'])
-  expect(argv('npx pytest')).toEqual(['npx pytest'])
+})
+
+test('npm exec, npx and bunx run the command after their own words, like pnpm exec', () => {
+  for (const r of ['npm exec', 'npm x', 'npx', 'bunx']) {
+    expect([r, argv(`${r} git push --force`)]).toEqual([r, ['git push --force']])
+    expect([r, argv(`${r} -- git push --force`)]).toEqual([r, ['git push --force']])
+  }
+  // npm's own verbs, and -c which hands its text to a shell, are not the command words.
+  expect(argv('npm install')).toEqual(['npm install'])
+  expect(argv('npm run build')).toEqual(['npm run build'])
+  expect(argv("npx -c 'git push origin main'")).toEqual(
+    expect.arrayContaining(['git push origin main']),
+  )
 })
 
 test('mise exec tool words and dotenv/op options end where the command starts, with or without --', () => {
