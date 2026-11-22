@@ -518,3 +518,12 @@ test('text arithmetic, declare, printf -v, read and a @P expansion walk the code
   }
   expect(spelled('x=3; echo $((x+1))')).not.toContain('git stash')
 })
+
+test('a word the shell splits or brace-expands says so; a quoted or plain one does not', () => {
+  const first = (c: string) => calls(c)[0]?.argv[0]?.splits
+  expect(first('{git,stash}')).toBe(true)
+  expect(first("x='a b'; $x")).toBeUndefined()
+  expect(calls("x='a b'; $x")[1]?.argv[0]?.splits).toBe(true)
+  expect(calls('x=\'a b\'; "$x"')[1]?.argv[0]?.splits).toBe(false)
+  expect(calls('x=a; $x')[1]?.argv[0]?.splits).toBe(false)
+})

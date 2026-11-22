@@ -149,6 +149,8 @@ export interface Word {
   value: string | undefined
   expands: boolean
   subst: boolean
+  // An unquoted brace list or variable the shell turns into several words.
+  splits?: boolean
   start: number | undefined
   end: number | undefined
   raw: string

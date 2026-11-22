@@ -72,6 +72,8 @@ interface Val {
   text: string
   expands: boolean
   subst: boolean
+  // The word is several words once the shell splits or brace-expands it.
+  splits?: boolean
 }
 
 const LINE_CONT = /\\\n/gu
@@ -146,6 +148,7 @@ const joined = (vals: Val[]): Val => ({
   text: vals.map((v) => v.text).join(''),
   expands: vals.some((v) => v.expands),
   subst: vals.some((v) => v.subst),
+  splits: vals.some((v) => v.splits),
 })
 const substCtx = (ctx: Ctx): Ctx => ({
   ...ctx,
@@ -199,7 +202,7 @@ const param = (w: W, ctx: Ctx, p: Node, quoted: boolean): Val => {
   const text = name === '!' ? LAST_JOB : (ctx.scope.env.get(name) ?? DYN)
   // An unquoted variable splits into words at its blanks, or at IFS once the script has set it.
   if (!quoted && (SPLITS.test(text) || ctx.scope.env.has('IFS'))) {
-    return dyn(false)
+    return { ...dyn(false), splits: true }
   }
   return { text, expands: true, subst: false }
 }
@@ -228,7 +231,7 @@ const partValue = (w: W, ctx: Ctx, p: Node, at: { quoted: boolean; lead: boolean
         return lit(v.replace(QUOTED_ESC, '$1'))
       }
       if (BRACE.test(v)) {
-        return dyn(false)
+        return { ...dyn(false), splits: true }
       }
       const bare = v.replace(BARE_ESC, '$1')
       return lit(lead && v.startsWith('~') ? tilde(w, bare) : bare)
