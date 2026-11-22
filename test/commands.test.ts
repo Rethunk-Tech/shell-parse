@@ -134,6 +134,15 @@ test('a child shell sees the exported names and its call prefix assignments, not
   )
 })
 
+test('set -a exports later assignments until +a or +o allexport, and -- stops the flags', () => {
+  const env = (c: string) => [...(calls(c).at(-1)?.env ?? [])].map(([k]) => k)
+  expect(env('set -a; FOO=bar; echo')).toContain('FOO')
+  expect(env('set -a; set +a; FOO=bar; echo')).not.toContain('FOO')
+  expect(env('set -a; set +o allexport; FOO=bar; echo')).not.toContain('FOO')
+  expect(env('set -o allexport; FOO=bar; echo')).toContain('FOO')
+  expect(env('set -- -a; FOO=bar; echo')).not.toContain('FOO')
+})
+
 test('a bash -c script is read as the calls it runs', () => {
   expect(argv("bash -c 'ls /a; cat b'")).toContain('cat b')
 })

@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- `set +a` and `set +o allexport` turn allexport off, and `set -- -a` names positional parameters rather than turning it on.
 - A shell a command runs in a child process sees the exported names and the call's own prefix assignments, not the parent's unexported variables.
 - A redirect with no command (`> file`) empties the recorded file, so a later `bash file` no longer walks the body it used to hold.
 - `&> FILE` and `>& FILE` record the file they write as `> FILE` does, so a later `bash FILE` is walked.

@@ -261,8 +261,11 @@ const builtin = (w: W, ctx: Ctx, call: Call) => {
         ctx.scope.env.set(a.value, DYN)
       }
     }
-  } else if (call.name === 'set' && setsAllexport(args.map((a) => a.value))) {
-    ctx.scope.allexport = true
+  } else if (call.name === 'set') {
+    const allexport = setsAllexport(args.map((a) => a.value))
+    if (allexport !== undefined) {
+      ctx.scope.allexport = allexport
+    }
   } else if (call.name === 'unset') {
     for (const a of args) {
       ctx.scope.env.delete(a.value ?? '')

@@ -5,6 +5,7 @@ import { type Ctx, type W, word } from './shellWords.ts'
 
 const EXPORT_FLAG = /^-\w*x/u
 const ALLEXPORT_FLAG = /^-\w*a/u
+const ALLEXPORT_OFF = /^\+\w*a/u
 
 const exportsAll = (w: W, ctx: Ctx, n: Node) =>
   ctx.scope.allexport === true ||
@@ -33,5 +34,25 @@ export const markExported = (w: W, ctx: Ctx, n: Node, assigned: Iterable<string>
   }
 }
 
-export const setsAllexport = (values: (string | undefined)[]) =>
-  values.includes('allexport') || values.some((v) => v !== undefined && ALLEXPORT_FLAG.test(v))
+// `set -a` / `set -o allexport` turns allexport on, `+a` / `+o allexport` turns it off, and the words
+// after `--` are positional parameters, not options. The last one named wins; none named leaves it be.
+export const setsAllexport = (values: (string | undefined)[]): boolean | undefined => {
+  let on: boolean | undefined
+  for (let i = 0; i < values.length; i++) {
+    const v = values[i] ?? ''
+    if (v === '--') {
+      break
+    }
+    if (v === '-o' || v === '+o') {
+      if (values[i + 1] === 'allexport') {
+        on = v === '-o'
+      }
+      i += 1
+    } else if (ALLEXPORT_FLAG.test(v)) {
+      on = true
+    } else if (ALLEXPORT_OFF.test(v)) {
+      on = false
+    }
+  }
+  return on
+}
