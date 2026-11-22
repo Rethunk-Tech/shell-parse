@@ -7,7 +7,9 @@ import {
   SEARCH_PROGRAMS,
 } from '../src/readOnly.ts'
 
-test('rgit reads are exactly the commands rgit --help lists without writing', () => {
+// The read set, pinned: any verb added to or removed from it fails here, and none of them writes. rgit is
+// not on the gate's PATH, so this list is kept by hand rather than asked of `rgit --help`.
+test('rgit reads are exactly the verbs that only read', () => {
   expect([...READ_ONLY_RGIT].sort((a, b) => a.localeCompare(b))).toEqual([
     'blame',
     'context',
