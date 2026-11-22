@@ -69,10 +69,15 @@ export const recordFileOps = (w: W, call: Call, own: Redirect[], ctx: Ctx) => {
     }
     copies.delete(path)
     const before = files.get(path)
-    // An append to a body no one recorded (a file on disk) or one only the run knows leaves it unknown.
-    if (text === undefined || text.includes(DYN) || (append && before === undefined)) {
+    // A body only the run knows leaves the file unknown.
+    if (text === undefined || text.includes(DYN)) {
       files.delete(path)
       unknown.add(path)
+      return
+    }
+    // An append to a body no one recorded (a file on disk) leaves the file for the caller to read, which
+    // adds the appended text to what it finds; it is not a body only the run knows.
+    if (append && before === undefined) {
       return
     }
     if (!append) {

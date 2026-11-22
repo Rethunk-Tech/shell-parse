@@ -168,6 +168,27 @@ test('an appended write adds to the recorded body instead of replacing it', asyn
   expect(after(`printf 'a\\n' >> /s/x.sh; printf 'b\\n' >> /s/x.sh`, { '/s/x.sh': '' })).toEqual([
     ['/s/x.sh', 'a\nb\n'],
   ])
+  // Appending to a body no one recorded is not a body only the run knows: the file stays unread, so a
+  // caller reads it from disk and completes again, and `bash x.sh` then runs both bodies.
+  const script = (await scriptOfAsync(
+    `printf 'pkill node' >> /s/x.sh; bash /s/x.sh`,
+    async (t) => parse(t),
+    undefined,
+    { files: new Map(), cwd: '/s' },
+  )) as Script
+  expect(commandsOf(script, { cwd: '/s', home: '/h' }).map((c) => c.name)).toEqual([
+    'printf',
+    'bash',
+  ])
+  expect([...(script.unknown ?? [])]).toEqual([])
+  script.files = new Map([['/s/x.sh', 'git stash\n']])
+  await completeAsync(script, async (t) => parse(t))
+  expect(commandsOf(script, { cwd: '/s', home: '/h' }).map((c) => c.argv[0]?.value)).toEqual([
+    'printf',
+    'bash',
+    'git',
+    'pkill',
+  ])
   // A plain write still replaces.
   expect(after('echo git stash > /s/x.sh', { '/s/x.sh': 'pkill node\n' })).toEqual([
     ['/s/x.sh', 'git stash'],
