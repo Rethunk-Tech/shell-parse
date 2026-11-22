@@ -2,10 +2,38 @@
 // flock, su -c, script -c, parallel, git submodule foreach, git rebase -x). No engine imports.
 import type { Call, Piece, Word, Wrapper } from './shellNodes.ts'
 import { gitVerb, joinPath } from './shellWords.ts'
-import { SHELL_FLAGS } from './wrappers.ts'
+import { hasShellFlag, SHELL_FLAGS } from './wrappers.ts'
 
 const joinedRaw = (words: Word[]) => ({ text: words.map((a) => a.raw).join(' '), base: undefined })
 const NPM_EXEC = new Set(['exec', 'x'])
+// A package runner's options that take the next word (`-p NAME`, `--cache DIR`).
+const RUNNER_VALUE_FLAGS = new Set([
+  '-p',
+  '--package',
+  '--prefix',
+  '-C',
+  '--workspace',
+  '-w',
+  '--cache',
+  '--registry',
+  '--userconfig',
+])
+// The words a package runner runs: past its own options, from its first operand (the package) on.
+const runnerWords = (args: Word[], from: number) => {
+  let i = from
+  while (i < args.length) {
+    const v = args[i]?.value ?? ''
+    if (v === '--') {
+      i += 1
+      break
+    }
+    if (!v.startsWith('-') || v === '-') {
+      break
+    }
+    i += RUNNER_VALUE_FLAGS.has(v) ? 2 : 1
+  }
+  return args.slice(i)
+}
 const SCRIPT_C = /^-[a-zA-Z]*c$/u
 const RUN_FLAG = new Set(['-exec', '-execdir', '-ok', '-okdir'])
 const FD_EXEC = new Set(['-x', '--exec', '-X', '--exec-batch'])
@@ -297,10 +325,18 @@ export const runnerPieces = (call: Call): Piece[] => {
     }
   } else if (
     call.name === 'npx' ||
+    call.name === 'bunx' ||
     (call.name === 'npm' && NPM_EXEC.has(values.find((v) => !v?.startsWith('-')) ?? ''))
   ) {
     // npx and `npm exec` hand -c's text to a shell.
     pieces.push(...optionValue(args, new Set(['-c', '--call'])))
+    // The package is both what they fetch and the command they run: the call keeps its own words, and the
+    // command after them is walked too, so a guard reads it.
+    const viaCall = values.some((v) => v === '--call' || v?.startsWith('--call=') === true)
+    if (!viaCall && !hasShellFlag(args, 0)) {
+      const verb = call.name === 'npm' ? args.findIndex((a) => NPM_EXEC.has(a.value ?? '')) : -1
+      pieces.push(joinedRaw(runnerWords(args, verb + 1)))
+    }
   } else if (call.name === 'ssh') {
     pieces.push(...sshPieces(args))
   } else if (call.name === 'git') {

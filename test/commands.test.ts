@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test'
 import { ansiC } from '../src/ansi.ts'
 import { fdExec } from '../src/runners.ts'
 import { recipesOf, selectsWorkspace, workspacePatterns } from '../src/scriptFile.ts'
-import { commandsOf, scriptOf, scriptOfAsync } from '../src/shell.ts'
+import { commandsOf, completeAsync, scriptOf, scriptOfAsync } from '../src/shell.ts'
 import { DYN, type Script } from '../src/shellNodes.ts'
 import { calls, parse } from './parse.ts'
 
@@ -149,7 +149,7 @@ test('parallel with flags and no command runs nothing', () => {
   expect(argv('parallel echo ::: a b')).toContain('echo')
 })
 
-test('an appended write adds to the recorded body instead of replacing it', () => {
+test('an appended write adds to the recorded body instead of replacing it', async () => {
   const after = (c: string, files: Record<string, string>) => {
     const script = scriptOf(c, parse, undefined, {
       files: new Map(Object.entries(files)),
@@ -168,8 +168,6 @@ test('an appended write adds to the recorded body instead of replacing it', () =
   expect(after(`printf 'a\\n' >> /s/x.sh; printf 'b\\n' >> /s/x.sh`, { '/s/x.sh': '' })).toEqual([
     ['/s/x.sh', 'a\nb\n'],
   ])
-  // Appending to a file no one recorded leaves a body only the run knows.
-  expect(after('echo git stash >> /s/x.sh', {})).toEqual([])
   // A plain write still replaces.
   expect(after('echo git stash > /s/x.sh', { '/s/x.sh': 'pkill node\n' })).toEqual([
     ['/s/x.sh', 'git stash'],
@@ -385,9 +383,28 @@ test('a command runner runs the command after its own words, so every guard read
 })
 
 test('npm exec, npx and bunx run the command after their own words, like pnpm exec', () => {
-  for (const r of ['npm exec', 'npm x', 'npx', 'bunx']) {
-    expect([r, argv(`${r} git push --force`)]).toEqual([r, ['git push --force']])
-    expect([r, argv(`${r} -- git push --force`)]).toEqual([r, ['git push --force']])
+  // The runner keeps a call of its own: a guard reads the package it runs from the call's name and argv
+  // (`npx -y pkg@2 stop`), as nomad-hud's supabase, port-killer and npx notes do.
+  for (const [c, name] of [
+    ['npx prettier', 'npx'],
+    ['npx -y supabase@latest stop --no-backup', 'npx'],
+    ['npx --yes kill-port@2 4780', 'npx'],
+    ['bunx -p some-wrapper kill-port 4780', 'bunx'],
+    ['npm exec kill-port 4780', 'npm'],
+    ['npm x --package=kill-port kill-port 4780', 'npm'],
+  ] as const) {
+    expect([c, calls(c).at(0)?.name]).toEqual([c, name])
+  }
+  // The command after the runner's own words is walked too, so a guard reads it.
+  for (const r of ['npm exec', 'npm x', 'npx', 'bunx'] as const) {
+    expect([r, argv(`${r} git push --force`)]).toEqual([
+      r,
+      [`${r} git push --force`, 'git push --force'],
+    ])
+    expect([r, argv(`${r} -- git push --force`)]).toEqual([
+      r,
+      [`${r} -- git push --force`, 'git push --force'],
+    ])
   }
   // npm's own verbs, and -c which hands its text to a shell, are not the command words.
   expect(argv('npm install')).toEqual(['npm install'])

@@ -5,6 +5,7 @@
 ### Fixed
 
 - An `IFS` in `opts.vars` splits an unquoted variable only where its value holds a character IFS names; the default IFS no longer turns every expansion unknown.
+- `npx`, `bunx`, `npm exec` and `npm x` keep a call of their own named for the runner, as `pnpm exec` does, so a guard that reads the package from the call (`npx -y pkg@2 stop`, `npx --yes kill-port@2 4780`) sees it; the command after the runner's words is still walked.
 - `scriptOfAsync` takes the same `read` files and `cwd` as `scriptOf`, so an async completion walks the script files the caller supplied.
 - `>>` and `tee -a` add to the body already recorded for a file instead of replacing it, so a later `bash file` walks both bodies.
 - `npm exec`, `npm x`, `npx` and `bunx` are read as running the command after their own options, as `pnpm exec` and `yarn exec` already were; `npm`'s own verbs still run nothing.

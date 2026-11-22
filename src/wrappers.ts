@@ -69,18 +69,6 @@ export const WRAPPERS = new Map<string, WrapperSpec>([
   ],
   ['poetry', { sub: 'run', values: ['-C', '--directory', '-P', '--project'] }],
   ['pnpm', { sub: 'exec', values: ['-C', '--dir', '--filter', '-F'] }],
-  // `npm exec` / `npm x`, `npx` and `bunx` fetch and run the command after their own words.
-  [
-    'npm',
-    {
-      sub: 'exec',
-      alias: 'x',
-      shell: true,
-      values: ['--prefix', '-C', '--workspace', '-w', '--cache', '--registry', '-p', '--package'],
-    },
-  ],
-  ['npx', { shell: true, values: ['-p', '--package', '--prefix', '-C', '--cache', '--registry'] }],
-  ['bunx', { shell: true, values: ['-p', '--package'] }],
   ['yarn', { sub: 'exec', values: ['--cwd'], workspace: true }],
   [
     'mise',
