@@ -3,14 +3,15 @@ import type { Script, ShellEnv, WalkOptions } from './shellNodes.ts'
 // A walk depends only on its script and options, and a consumer walks one command many times (each guard,
 // each completion pass); a long script costs a tenth of a second a walk, so a repeat is served from here.
 // The key holds every input that changes between walks: the nested and file maps only grow, and the walk
-// itself records the files the command writes, so the key is taken after it.
+// itself records the files the command writes, so the key is taken after it. A file edited in place is a
+// new key: its contents, not just its count, are part of it.
 const walkKey = (script: Script, opts: WalkOptions) =>
   JSON.stringify([
     opts.vars,
     script.nested.size,
-    script.files?.size,
-    script.unknown?.size,
-    script.copies?.size,
+    [...(script.files ?? [])],
+    [...(script.unknown ?? [])],
+    [...(script.copies ?? [])],
   ])
 
 // Walks of other scripts, kept across commands: the same command text over the same script files, alias and

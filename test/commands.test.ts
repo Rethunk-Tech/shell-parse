@@ -511,6 +511,21 @@ test('a repeated walk of one script is served from the last one until an input c
   expect(after).toContain('git push origin main')
 })
 
+test('a file edited in place on one script is walked again though the map keeps its size', () => {
+  const script = scriptOf('bash /s/run.sh', parse, undefined, {
+    files: new Map([['/s/run.sh', 'echo one']]),
+    cwd: '/s',
+  }) as Script
+  // Both bodies are parsed already, so the nested map does not grow when the file changes.
+  script.nested.set('pkill node', parse('pkill node'))
+  const opts = { cwd: '/s', home: '/h' }
+  expect(commandsOf(script, opts).map((c) => c.name)).toContain('echo')
+  script.files?.set('/s/run.sh', 'pkill node')
+  const names = commandsOf(script, opts).map((c) => c.name)
+  expect(names).toContain('pkill')
+  expect(names).not.toContain('echo')
+})
+
 test('helpers that each call two earlier helpers are walked inside a bounded number of expansions', () => {
   const fns = Array.from(
     { length: 450 },
