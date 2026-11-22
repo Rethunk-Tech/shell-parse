@@ -456,6 +456,8 @@ export const gitVerb = (call: Call) => {
 
 const SHELL_FLAG = /^(?:[-+][A-Za-z]+|--.*)$/u
 const SET_OPTION = new Set(['-o', '+o', '-O', '+O'])
+// Long options whose value is the next word, or attached with `=`: the word after is no flag and no script.
+const SHELL_VALUE_OPTION = new Set(['--rcfile', '--init-file'])
 const STDIN_FILES = new Set(['/dev/stdin', '/dev/fd/0', '/proc/self/fd/0'])
 // A shell's leading flags: where its operands start, and whether they said -c or -s.
 export const shellFlags = (args: Word[]) => {
@@ -464,7 +466,9 @@ export const shellFlags = (args: Word[]) => {
   let dashS = false
   while (i < args.length && SHELL_FLAG.test(args[i]?.value ?? '')) {
     const v = args[i]?.value ?? ''
-    i += SET_OPTION.has(v) ? 2 : 1
+    // `--rcfile=FILE` carries its value; a bare `--rcfile` takes the next word.
+    const takesNext = SHELL_VALUE_OPTION.has(v)
+    i += SET_OPTION.has(v) || takesNext ? 2 : 1
     if (v === '--') {
       break
     }
@@ -484,16 +488,18 @@ export const SHELLS = new Set(['bash', 'sh', 'zsh', 'dash', 'ksh', 'mksh', 'ash'
 const NO_FILE = /^-[a-z]*[cn]/u
 // The script file a shell or source call runs, as an absolute path, when its name is literal.
 export const scriptFileOf = (call: Call, cwd: string | undefined) => {
-  const at = call.argv.findIndex((a, i) => i > 0 && !a.value?.startsWith('-'))
+  const flags = shellFlags(call.argv.slice(1))
+  // The operands start past the flags; `--rcfile FILE` holds a value that is no script name.
+  const at = flags.i + 1
   const runs = SHELLS.has(call.name) || call.name === 'source' || call.name === '.'
   // `bash < file` runs the file as `bash file` does.
   const fed = call.redirects.find((r) => r.op === '<' && (r.fd === undefined || r.fd === '0'))
-  const name = at < 0 && SHELLS.has(call.name) ? fed?.target : call.argv[at]
+  const name = at >= call.argv.length && SHELLS.has(call.name) ? fed?.target : call.argv[at]
   // With -s the operands are positional parameters, and a stdin path is no file: the commands come on stdin.
-  if (shellFlags(call.argv.slice(1)).dashS) {
+  if (flags.dashS) {
     return
   }
-  const pre = call.argv.slice(1, at < 0 ? undefined : at)
+  const pre = call.argv.slice(1, at)
   return runs && !pre.some((a) => NO_FILE.test(a.value ?? '')) && name?.value !== undefined
     ? joinPath(call.cwd ?? cwd, name.value)
     : undefined

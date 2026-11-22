@@ -91,6 +91,20 @@ test('a bash -c script is read as the calls it runs', () => {
   expect(argv("bash -c 'ls /a; cat b'")).toContain('cat b')
 })
 
+test('a shell option that takes a file leaves -c to run its command and no rc file', () => {
+  expect(argv(`bash --rcfile /etc/bashrc -c 'git stash'`)).toEqual([
+    'bash --rcfile /etc/bashrc -c git stash',
+    'git stash',
+  ])
+  expect(withFiles(`bash --rcfile /s/rc.sh -c 'git stash'`, { '/s/rc.sh': 'pkill node' })).toEqual([
+    'bash --rcfile /s/rc.sh -c git stash',
+    'git stash',
+  ])
+  expect(withFiles('bash --init-file=/s/rc.sh /s/run.sh', { '/s/run.sh': 'git push' })).toContain(
+    'git push',
+  )
+})
+
 const withFiles = (command: string, files: Record<string, string>) =>
   commandsOf(
     scriptOf(command, parse, undefined, {

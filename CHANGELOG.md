@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- A shell's `--rcfile FILE` / `--init-file FILE` (`--rcfile=FILE`) takes its value, so `bash --rcfile x -c CMD` runs CMD instead of reading the rc file as its script.
 - An unquoted brace list or range (`{git,stash}`) and an unquoted variable that holds a blank, or any variable once IFS is set, read as a word only the run knows, since the shell expands them into several words.
 - `env -S'git stash'` and `env -vS'git stash'`, with the script attached to the flag, are read as the script they run.
 - An alias that ends in a blank hands the next word to alias expansion; an alias whose value only the run knows reads as a program no one can name; `hash -p PATH NAME` binds NAME as an alias does.
