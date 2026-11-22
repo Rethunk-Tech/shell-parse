@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test'
+import { ansiC } from '../src/ansi.ts'
 import { fdExec } from '../src/runners.ts'
 import { recipesOf, selectsWorkspace, workspacePatterns } from '../src/scriptFile.ts'
 import { commandsOf, scriptOf } from '../src/shell.ts'
@@ -93,6 +94,13 @@ test('a compound pipeline stage feeds its written-out output to the next stage',
     'git push --force origin main',
   )
   expect(argv("(printf 'git stash\\n') | sh")).toContain('git stash')
+})
+
+test('a $\\U escape past the last code point is no crash', () => {
+  expect(ansiC('\\UFFFFFFFF')).toBe('\\UFFFFFFFF')
+  expect(ansiC('\\U110000')).toBe('\\U110000')
+  expect(ansiC('\\u0061')).toBe('a')
+  expect(argv(`echo $'\\UFFFFFFFF'`)).toContain('echo \\UFFFFFFFF')
 })
 
 test('a bash -c script is read as the calls it runs', () => {

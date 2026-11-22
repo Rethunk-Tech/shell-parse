@@ -16,6 +16,12 @@ const ANSI_C_ONE: Record<string, string> = {
 const HEX = 16
 const OCTAL = 8
 const CONTROL_BIT = 0x40
+const MAX_CODE_POINT = 0x10_ff_ff
+// A code point no character holds (bash writes its bytes raw) keeps the escape's own text.
+const codePoint = (value: number, all: string) =>
+  Number.isFinite(value) && value >= 0 && value <= MAX_CODE_POINT
+    ? String.fromCodePoint(value)
+    : all
 export const ansiC = (text: string) =>
   text.replace(ANSI_C, (all, ...rest) => {
     const g = rest.at(-1) as Record<string, string | undefined>
@@ -23,7 +29,7 @@ export const ansiC = (text: string) =>
       return String.fromCharCode(Number.parseInt(g.hex, HEX))
     }
     if (g.uni !== undefined) {
-      return String.fromCodePoint(Number.parseInt(g.uni, HEX))
+      return codePoint(Number.parseInt(g.uni, HEX), all)
     }
     if (g.oct !== undefined) {
       return String.fromCharCode(Number.parseInt(g.oct, OCTAL))
