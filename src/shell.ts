@@ -192,6 +192,14 @@ const bindAll = (w: W, ctx: Ctx, n: Node, assigns: Map<string, string>): undefin
   markExported(w, ctx, n, assigns.keys())
   w.out.calls.push(callOf(ctx, { argv: [], wrappers: [] }, assigns, range(ctx, n)))
 }
+// A long script sets hundreds of variables and exports a few, and every call takes a copy: walk the smaller side.
+const exportedEnv = ({ env, exported }: Ctx['scope']): [string, string][] =>
+  exported.size < env.size
+    ? [...exported].flatMap((k) => {
+        const v = env.get(k)
+        return v === undefined ? [] : [[k, v] as [string, string]]
+      })
+    : [...env].filter(([k]) => exported.has(k))
 const callOf = (
   ctx: Ctx,
   { argv, wrappers }: { argv: Word[]; wrappers: Wrapper[] },
@@ -202,7 +210,7 @@ const callOf = (
   name: nameOf(argv[0]),
   wrappers,
   assigns,
-  env: new Map([...[...ctx.scope.env].filter(([k]) => ctx.scope.exported.has(k)), ...assigns]),
+  env: new Map([...exportedEnv(ctx.scope), ...assigns]),
   redirects: ctx.redirects,
   cwd: wrapperCwd(wrappers, ctx.scope.cwd),
   start: r.start,
