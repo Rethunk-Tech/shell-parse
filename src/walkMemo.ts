@@ -15,7 +15,7 @@ const walkKey = (script: Script, opts: WalkOptions) =>
 
 // Walks of other scripts, kept across commands: the same command text over the same script files, alias and
 // function snapshot and options gives the same calls, so a repeat guard of an unchanged script is a lookup. A walk
-// that recorded files into the script is not kept, since a hit would not record them again.
+// that recorded files into the script is kept with them, and a hit records them again.
 const KEPT = 16
 const ids = new WeakMap<object, number>()
 let nextId = 0
@@ -47,7 +47,31 @@ const keptKey = (script: Script, opts: WalkOptions, key: string) =>
     envKey(script.env),
     key,
   ])
-const sizes = (s: Script) => [s.files?.size, s.unknown?.size, s.copies?.size].join()
+interface Recorded {
+  files: [string, string][]
+  unknown: string[]
+  copies: [string, string][]
+}
+const recorded = (s: Script, was: number[]): Recorded => ({
+  files: [...(s.files ?? [])].slice(was[0]),
+  unknown: [...(s.unknown ?? [])].slice(was[1]),
+  copies: [...(s.copies ?? [])].slice(was[2]),
+})
+const sizes = (s: Script) => [s.files?.size ?? 0, s.unknown?.size ?? 0, s.copies?.size ?? 0]
+const replay = (s: Script, r: Recorded) => {
+  s.files ??= new Map()
+  s.unknown ??= new Set()
+  s.copies ??= new Map()
+  for (const [k, v] of r.files) {
+    s.files.set(k, v)
+  }
+  for (const k of r.unknown) {
+    s.unknown.add(k)
+  }
+  for (const [k, v] of r.copies) {
+    s.copies.set(k, v)
+  }
+}
 
 export const memoWalk = <T>(walk: (script: Script, opts: WalkOptions) => T) => {
   interface Walked {
@@ -55,7 +79,7 @@ export const memoWalk = <T>(walk: (script: Script, opts: WalkOptions) => T) => {
     env: ShellEnv | undefined
     out: T
   }
-  const recent = new Map<string, unknown>()
+  const recent = new Map<string, { out: T; added: Recorded }>()
   const walked = new WeakMap<Script, Map<WalkOptions['known'], Map<string, Walked>>>()
   return (script: Script, opts: WalkOptions) => {
     const byKnown = walked.get(script) ?? new Map<WalkOptions['known'], Map<string, Walked>>()
@@ -72,13 +96,14 @@ export const memoWalk = <T>(walk: (script: Script, opts: WalkOptions) => T) => {
     if (seen !== undefined) {
       recent.delete(kept as string)
       recent.set(kept as string, seen)
-      byPlace.set(place, { key: walkKey(script, opts), env: script.env, out: seen as T })
-      return seen as T
+      replay(script, seen.added)
+      byPlace.set(place, { key: walkKey(script, opts), env: script.env, out: seen.out })
+      return seen.out
     }
     const before = sizes(script)
     const out = walk(script, opts)
-    if (kept !== undefined && sizes(script) === before) {
-      recent.set(kept, out)
+    if (kept !== undefined) {
+      recent.set(kept, { out, added: recorded(script, before) })
       if (recent.size > KEPT) {
         recent.delete(recent.keys().next().value as string)
       }
