@@ -275,6 +275,17 @@ const pnpmShellPieces = (words: Word[], command: Word[]): Piece[] => {
       : { text: command.map((w) => w.value ?? w.raw).join(' '), base: undefined },
   ]
 }
+// npx, bunx and `npm exec`/`npm x`: `-c` hands a text to a shell, and the package words after their own
+// options are the command they run, which is walked too.
+const packageRunnerPieces = (call: Call, args: Word[]): Piece[] => {
+  const pieces = optionValue(args, new Set(['-c', '--call']))
+  const viaCall = args.some((a) => a.value === '--call' || a.value?.startsWith('--call=') === true)
+  if (viaCall || hasShellFlag(args, 0)) {
+    return pieces
+  }
+  const verb = call.name === 'npm' ? args.findIndex((a) => NPM_EXEC.has(a.value ?? '')) : -1
+  return [...pieces, joinedRaw(runnerWords(args, verb + 1))]
+}
 const wrapperPieces = (w: Wrapper, command: Word[]): Piece[] => {
   if (w.name === 'env') {
     return optionValue(w.words, new Set(['-S', '--split-string']))
@@ -328,15 +339,7 @@ export const runnerPieces = (call: Call): Piece[] => {
     call.name === 'bunx' ||
     (call.name === 'npm' && NPM_EXEC.has(values.find((v) => !v?.startsWith('-')) ?? ''))
   ) {
-    // npx and `npm exec` hand -c's text to a shell.
-    pieces.push(...optionValue(args, new Set(['-c', '--call'])))
-    // The package is both what they fetch and the command they run: the call keeps its own words, and the
-    // command after them is walked too, so a guard reads it.
-    const viaCall = values.some((v) => v === '--call' || v?.startsWith('--call=') === true)
-    if (!viaCall && !hasShellFlag(args, 0)) {
-      const verb = call.name === 'npm' ? args.findIndex((a) => NPM_EXEC.has(a.value ?? '')) : -1
-      pieces.push(joinedRaw(runnerWords(args, verb + 1)))
-    }
+    pieces.push(...packageRunnerPieces(call, args))
   } else if (call.name === 'ssh') {
     pieces.push(...sshPieces(args))
   } else if (call.name === 'git') {
