@@ -103,6 +103,19 @@ test('a $\\U escape past the last code point is no crash', () => {
   expect(argv(`echo $'\\UFFFFFFFF'`)).toContain('echo \\UFFFFFFFF')
 })
 
+test('a stdout+stderr redirect writes the file as > does', () => {
+  for (const op of ['&>', '>&']) {
+    expect([op, withFiles(`echo git stash ${op} /s/x.sh; bash /s/x.sh`, {})]).toEqual([
+      op,
+      expect.arrayContaining(['git stash']),
+    ])
+  }
+  // A descriptor copy names no path to record.
+  expect(withFiles('echo git stash >&2; bash /s/x.sh', { '/s/x.sh': 'pkill node' })).toContain(
+    'pkill node',
+  )
+})
+
 test('a bash -c script is read as the calls it runs', () => {
   expect(argv("bash -c 'ls /a; cat b'")).toContain('cat b')
 })

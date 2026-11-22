@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- `&> FILE` and `>& FILE` record the file they write as `> FILE` does, so a later `bash FILE` is walked.
 - A `$'\U...'` escape past the last code point keeps its text instead of throwing out of the walk.
 - `bash -c "$CMD"` and `eval "$CMD"` run the value the variable holds, not the source word: a known variable's command is walked, and a multi-word `eval` joins the words' values.
 - A compound pipeline stage (`(echo CMD) | sh`, `{ printf ...; } | bash`) feeds its written-out output to the next stage, so the shell's script is walked.

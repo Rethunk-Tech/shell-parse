@@ -15,8 +15,13 @@ const decode64 = (text: string) => {
     return
   }
 }
+// A redirect that writes the call's output to a file: `>`, `>|` and the stdout+stderr forms `&>` and `>& file`.
+// A descriptor copy (`2>&1`, `>&2`) names no file.
+const DESCRIPTOR = /^\d+-?$/u
 const stdoutRedirect = (r: Redirect) =>
-  r.op.includes('>') && !r.op.includes('&') && (r.fd === undefined || r.fd === '1')
+  (r.op.includes('>') || r.op === '&>') &&
+  (r.fd === undefined || r.fd === '1') &&
+  !DESCRIPTOR.test(r.target?.value ?? '')
 // What a call's `> file` leaves in the file, when the call is one whose output is written out.
 const redirected = (call: Call, args: Word[], fed: Piece | undefined) => {
   const decoding = call.name === 'base64' && call.argv.some((a) => DECODE.has(a.value ?? ''))
