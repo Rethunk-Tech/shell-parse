@@ -444,3 +444,29 @@ test('helpers that each call two earlier helpers are walked inside a bounded num
   expect(found.length).toBeGreaterThan(60)
   expect(performance.now() - started).toBeLessThan(2000)
 })
+
+test('a repeat walk of the same command over the same script files is served from the kept walk, and an edited file is walked again', () => {
+  const body = (n: number) =>
+    Array.from(
+      { length: 300 },
+      (_, i) => `h${i}() { echo ${n}; ${i > 1 ? `h${i - 1}; h${i >> 1}` : ':'}; }`,
+    ).join('\n')
+  const walk = (text: string) => {
+    const script = scriptOf('bash /s/x.sh', parse, undefined, {
+      files: new Map([['/s/x.sh', text]]),
+      cwd: '/s',
+    })
+    if (!script) {
+      throw new Error('unparsed')
+    }
+    const started = performance.now()
+    const found = commandsOf(script, { cwd: '/s', home: '/h' })
+    return { found, ms: performance.now() - started }
+  }
+  const first = walk(`${body(1)}\nh299`)
+  const again = walk(`${body(1)}\nh299`)
+  expect(first.found.length).toBeGreaterThan(300)
+  expect(again.found[0]).toBe(first.found[0])
+  expect(again.ms).toBeLessThan(first.ms / 5)
+  expect(walk(`${body(2)}\nh299`).found[0]).not.toBe(first.found[0])
+})

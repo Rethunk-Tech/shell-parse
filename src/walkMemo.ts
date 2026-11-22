@@ -13,12 +13,49 @@ const walkKey = (script: Script, opts: WalkOptions) =>
     script.copies?.size,
   ])
 
+// Walks of other scripts, kept across commands: the same command text over the same script files, alias and
+// function snapshot and options gives the same calls, so a repeat guard of an unchanged script is a lookup. A walk
+// that recorded files into the script is not kept, since a hit would not record them again.
+const KEPT = 16
+const ids = new WeakMap<object, number>()
+let nextId = 0
+const idOf = (o: object | undefined) => {
+  if (o === undefined) {
+    return 0
+  }
+  if (!ids.has(o)) {
+    nextId += 1
+    ids.set(o, nextId)
+  }
+  return ids.get(o)
+}
+const envKey = (env: ShellEnv | undefined) =>
+  env === undefined
+    ? ''
+    : JSON.stringify([
+        [...env.aliases],
+        [...env.functions].map(([k, f]) => [k, f.text]),
+        [...(env.gitAliases ?? [])],
+      ])
+const keptKey = (script: Script, opts: WalkOptions, key: string) =>
+  JSON.stringify([
+    script.text,
+    [...(script.files ?? [])],
+    opts.cwd,
+    opts.home,
+    idOf(opts.known),
+    envKey(script.env),
+    key,
+  ])
+const sizes = (s: Script) => [s.files?.size, s.unknown?.size, s.copies?.size].join()
+
 export const memoWalk = <T>(walk: (script: Script, opts: WalkOptions) => T) => {
   interface Walked {
     key: string
     env: ShellEnv | undefined
     out: T
   }
+  const recent = new Map<string, unknown>()
   const walked = new WeakMap<Script, Map<WalkOptions['known'], Map<string, Walked>>>()
   return (script: Script, opts: WalkOptions) => {
     const byKnown = walked.get(script) ?? new Map<WalkOptions['known'], Map<string, Walked>>()
@@ -30,7 +67,22 @@ export const memoWalk = <T>(walk: (script: Script, opts: WalkOptions) => T) => {
     if (hit && hit.env === script.env && hit.key === walkKey(script, opts)) {
       return hit.out
     }
+    const kept = script.files?.size ? keptKey(script, opts, walkKey(script, opts)) : undefined
+    const seen = kept === undefined ? undefined : recent.get(kept)
+    if (seen !== undefined) {
+      recent.delete(kept as string)
+      recent.set(kept as string, seen)
+      byPlace.set(place, { key: walkKey(script, opts), env: script.env, out: seen as T })
+      return seen as T
+    }
+    const before = sizes(script)
     const out = walk(script, opts)
+    if (kept !== undefined && sizes(script) === before) {
+      recent.set(kept, out)
+      if (recent.size > KEPT) {
+        recent.delete(recent.keys().next().value as string)
+      }
+    }
     byPlace.set(place, { key: walkKey(script, opts), env: script.env, out })
     return out
   }
