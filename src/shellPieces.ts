@@ -122,7 +122,7 @@ export const gitProgramSpelled = (argv: Word[]): Word[] => {
 }
 
 // A long script sets hundreds of variables and exports a few, and every call takes a copy: walk the smaller side.
-const exportedEnv = ({ env, exported }: Ctx['scope']): [string, string][] =>
+export const exportedEnv = ({ env, exported }: Ctx['scope']): [string, string][] =>
   exported.size < env.size
     ? [...exported].flatMap((k) => {
         const v = env.get(k)

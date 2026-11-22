@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- A shell a command runs in a child process sees the exported names and the call's own prefix assignments, not the parent's unexported variables.
 - A redirect with no command (`> file`) empties the recorded file, so a later `bash file` no longer walks the body it used to hold.
 - `&> FILE` and `>& FILE` record the file they write as `> FILE` does, so a later `bash FILE` is walked.
 - A `$'\U...'` escape past the last code point keeps its text instead of throwing out of the walk.

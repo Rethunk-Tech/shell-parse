@@ -124,6 +124,16 @@ test('a redirect with no command truncates the file it names', () => {
   expect(withFiles('> /s/x.sh; bash /s/x.sh', {})).not.toContain('pkill node')
 })
 
+test('a child shell sees the exported names and its call prefix assignments, not unexported ones', () => {
+  expect(argv(`FOO=bar bash -c 'echo $FOO'`)).toContain('echo bar')
+  expect(argv(`SECRET=sshhh; bash -c 'echo $SECRET'`)).toContain('echo ?')
+  expect(argv(`export FOO=bar; bash -c 'echo $FOO'`)).toContain('echo bar')
+  // A prefix assignment reaches only its own process.
+  expect(argv(`X=1 bash -c 'echo $X'; bash -c 'echo $X'`)).toEqual(
+    expect.arrayContaining(['echo 1', 'echo ?']),
+  )
+})
+
 test('a bash -c script is read as the calls it runs', () => {
   expect(argv("bash -c 'ls /a; cat b'")).toContain('cat b')
 })

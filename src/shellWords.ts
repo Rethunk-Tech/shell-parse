@@ -103,11 +103,8 @@ export const cloneScope = (s: Scope): Scope => ({
 export const range = (ctx: Ctx, n: Node) => {
   const { start, end } = spanOf(ctx.src.at, n)
   const base = ctx.src.base
-  return {
-    raw: ctx.src.text.slice(start, end),
-    start: base === undefined ? undefined : base + start,
-    end: base === undefined ? undefined : base + end,
-  }
+  const pos = (i: number) => (base === undefined ? undefined : base + i)
+  return { raw: ctx.src.text.slice(start, end), start: pos(start), end: pos(end) }
 }
 // git's option parser takes any unambiguous prefix of a long option (`--ha` is `--hard`), at least two
 // characters of the name; `=value` is not part of the option.
@@ -257,8 +254,7 @@ const partValue = (w: W, ctx: Ctx, p: Node, at: { quoted: boolean; lead: boolean
       return dyn(false)
   }
 }
-// The script a word holds when a shell runs it, and where it sits in the command when its bytes are
-// exactly the script's (a single-quoted string, an escape-free double-quoted one or bare word).
+// The script a word holds when a shell runs it, and where it sits when its bytes are the script's own.
 const pieceOf = (parts: Node[], v: Val, r: ReturnType<typeof range>): Piece => {
   const [only] = parts
   const inside = r.start === undefined ? undefined : r.start + 1
@@ -267,13 +263,12 @@ const pieceOf = (parts: Node[], v: Val, r: ReturnType<typeof range>): Piece => {
   }
   if (parts.length === 1 && only?.Type === 'DblQuoted') {
     const text = r.raw.slice(1, -1)
-    // `"$CMD"` hands the shell the value it holds, not the source bytes: only the value has no base.
-    if (v.expands && !v.text.includes(DYN)) {
-      return { text: v.text, base: undefined }
-    }
-    return text.includes('\\')
-      ? { text: text.replace(LINE_CONT, '').replace(QUOTED_ESC, '$1'), base: undefined }
-      : { text, base: inside }
+    // A word holding a variable hands the shell the value it holds, not the source bytes: it has no base.
+    const escaped = text.includes('\\')
+    const shown = escaped ? text.replace(LINE_CONT, '').replace(QUOTED_ESC, '$1') : text
+    return v.expands && !v.text.includes(DYN)
+      ? { text: v.text, base: undefined }
+      : { text: shown, base: escaped ? undefined : inside }
   }
   if (parts.every((p) => p.Type === 'Lit') && !r.raw.includes('\\')) {
     return { text: r.raw, base: r.start }
@@ -319,10 +314,10 @@ export const assignsOf = (w: W, ctx: Ctx, nodes: Node[]) => {
   const bound = new Map<string, string>()
   for (const a of nodes) {
     const name = str(one(a, 'Name'), 'Value')
+    const value = one(a, 'Value')
     if (name === undefined || a.Naked === true) {
       continue
     }
-    const value = one(a, 'Value')
     if (a.Append === true || one(a, 'Array') || one(a, 'Index')) {
       anyIn(w, ctx, a)
       bound.set(name, DYN)
@@ -459,9 +454,8 @@ export const gitVerb = (call: Call) => {
 }
 
 const SHELL_FLAG = /^(?:[-+][A-Za-z]+|--.*)$/u
-const SET_OPTION = new Set(['-o', '+o', '-O', '+O'])
-// Long options whose value is the next word, or attached with `=`: the word after is no flag and no script.
-const SHELL_VALUE_OPTION = new Set(['--rcfile', '--init-file'])
+// Options whose value is the next word: `-o errexit`, `--rcfile FILE`.
+const SET_OPTION = new Set(['-o', '+o', '-O', '+O', '--rcfile', '--init-file'])
 const STDIN_FILES = new Set(['/dev/stdin', '/dev/fd/0', '/proc/self/fd/0'])
 // A shell's leading flags: where its operands start, and whether they said -c or -s.
 export const shellFlags = (args: Word[]) => {
@@ -470,19 +464,18 @@ export const shellFlags = (args: Word[]) => {
   let dashS = false
   while (i < args.length && SHELL_FLAG.test(args[i]?.value ?? '')) {
     const v = args[i]?.value ?? ''
-    // `--rcfile=FILE` carries its value; a bare `--rcfile` takes the next word.
-    const takesNext = SHELL_VALUE_OPTION.has(v)
-    i += SET_OPTION.has(v) || takesNext ? 2 : 1
+    i += SET_OPTION.has(v) ? 2 : 1
     if (v === '--') {
       break
     }
-    dashC ||= v.startsWith('-') && !v.startsWith('--') && v.includes('c')
-    dashS ||= v.startsWith('-') && !v.startsWith('--') && v.includes('s')
+    // A short group says -c or -s; a long option never does.
+    const short = v.startsWith('-') && !v.startsWith('--')
+    dashC ||= short && v.includes('c')
+    dashS ||= short && v.includes('s')
   }
   // `bash /dev/stdin` reads the commands it is fed, as -s does.
   return { i, dashC, dashS: dashS || STDIN_FILES.has(args[i]?.value ?? '') }
-}
-// at and batch queue the commands they read on stdin; `source /dev/stdin` runs them now.
+} // at and batch queue the commands they read on stdin; `source /dev/stdin` runs them now.
 export const readsStdin = (call: Call, args: Word[]) =>
   call.name === 'at' ||
   call.name === 'batch' ||
@@ -492,19 +485,16 @@ export const SHELLS = new Set(['bash', 'sh', 'zsh', 'dash', 'ksh', 'mksh', 'ash'
 const NO_FILE = /^-[a-z]*[cn]/u
 // The script file a shell or source call runs, as an absolute path, when its name is literal.
 export const scriptFileOf = (call: Call, cwd: string | undefined) => {
-  const flags = shellFlags(call.argv.slice(1))
-  // The operands start past the flags; `--rcfile FILE` holds a value that is no script name.
-  const at = flags.i + 1
-  const runs = SHELLS.has(call.name) || call.name === 'source' || call.name === '.'
-  // `bash < file` runs the file as `bash file` does.
+  // The operands start past the flags, a `--rcfile` value among them.
+  const { i, dashS } = shellFlags(call.argv.slice(1))
+  const at = i + 1
   const fed = call.redirects.find((r) => r.op === '<' && (r.fd === undefined || r.fd === '0'))
   const name = at >= call.argv.length && SHELLS.has(call.name) ? fed?.target : call.argv[at]
-  // With -s the operands are positional parameters, and a stdin path is no file: the commands come on stdin.
-  if (flags.dashS) {
-    return
-  }
+  const runs = SHELLS.has(call.name) || call.name === 'source' || call.name === '.'
   const pre = call.argv.slice(1, at)
-  return runs && !pre.some((a) => NO_FILE.test(a.value ?? '')) && name?.value !== undefined
-    ? joinPath(call.cwd ?? cwd, name.value)
-    : undefined
+  // `bash < file` runs the file as `bash file` does; with -s the operands are positional parameters.
+  const noFile = !runs || dashS || name?.value === undefined
+  return noFile || pre.some((a) => NO_FILE.test(a.value ?? ''))
+    ? undefined
+    : joinPath(call.cwd ?? cwd, name.value)
 }

@@ -25,7 +25,14 @@ import {
   type WalkOptions,
   type Word,
 } from './shellNodes.ts'
-import { bindOwnPath, callOf, feedOf, scriptRuns, shellFromPipe } from './shellPieces.ts'
+import {
+  bindOwnPath,
+  callOf,
+  exportedEnv,
+  feedOf,
+  scriptRuns,
+  shellFromPipe,
+} from './shellPieces.ts'
 import {
   anyIn,
   assignsOf,
@@ -224,6 +231,8 @@ const callExpr = (w: W, ctx: Ctx, cmd: Node, own: Redirect[]) => {
       via: ctx.via,
       outer,
       runs: scriptRuns(call),
+      // eval runs in this shell; every other script runs in a child process.
+      assigns: call.name === 'eval' ? undefined : assigns,
     })
   }
   for (const piece of runnerPieces(call)) {
@@ -300,12 +309,15 @@ const nest = (
     via,
     outer = ctx.outer,
     runs,
+    assigns,
   }: {
     sameShell: boolean
     via: string | undefined
     outer?: readonly string[]
     // How the call reads its script file: run as a program or by a shell (own $0), or sourced.
     runs?: 'program' | 'source'
+    // The call's prefix assignments: they reach the child process, unexported names in the parent do not.
+    assigns?: Map<string, string>
   },
 ) => {
   if (ctx.depth >= MAX_DEPTH) {
@@ -317,6 +329,15 @@ const nest = (
     return
   }
   const scope = sameShell ? ctx.scope : cloneScope(ctx.scope)
+  if (!sameShell) {
+    // A child process gets the exported names only; the call's prefix assignments reach that one process.
+    scope.env = new Map(exportedEnv(ctx.scope))
+  }
+  if (assigns) {
+    for (const [k, v] of assigns) {
+      scope.env.set(k, v)
+    }
+  }
   bindOwnPath(scope, piece.file, runs)
   const inner = {
     ...ctx,
