@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test'
 import { ansiC } from '../src/ansi.ts'
 import { fdExec } from '../src/runners.ts'
 import { recipesOf, selectsWorkspace, workspacePatterns } from '../src/scriptFile.ts'
-import { commandsOf, scriptOf } from '../src/shell.ts'
+import { commandsOf, scriptOf, scriptOfAsync } from '../src/shell.ts'
 import { DYN, type Script } from '../src/shellNodes.ts'
 import { calls, parse } from './parse.ts'
 
@@ -174,6 +174,17 @@ test('an appended write adds to the recorded body instead of replacing it', () =
   expect(after('echo git stash > /s/x.sh', { '/s/x.sh': 'pkill node\n' })).toEqual([
     ['/s/x.sh', 'git stash'],
   ])
+})
+
+test('scriptOfAsync takes the same read files and cwd as scriptOf', async () => {
+  const script = await scriptOfAsync('bash /s/run.sh', async (t) => parse(t), undefined, {
+    files: new Map([['/s/run.sh', 'git push origin main']]),
+    cwd: '/s',
+  })
+  const names = commandsOf(script as Script, { cwd: '/s', home: '/h' }).map((c) =>
+    c.argv.map((w) => w.text).join(' '),
+  )
+  expect(names).toContain('git push origin main')
 })
 
 test('a bash -c script is read as the calls it runs', () => {

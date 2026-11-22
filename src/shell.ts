@@ -492,7 +492,13 @@ export const scriptOfAsync = async (
   text: string,
   parse: (text: string) => Promise<Node | undefined>,
   env?: ShellEnv,
+  read?: { files: Map<string, string>; cwd?: string },
 ): Promise<Script | undefined> => {
   const file = await parse(text)
-  return file ? completeAsync({ text, file, nested: new Map(), env }, parse) : undefined
+  return file
+    ? completeAsync(
+        { text, file, nested: new Map(), env, files: read?.files, cwd: read?.cwd },
+        parse,
+      )
+    : undefined
 }
