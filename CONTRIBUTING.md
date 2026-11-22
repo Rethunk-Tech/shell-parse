@@ -17,9 +17,9 @@ gate
 
 ## Exports
 
-The module has one consumer. A new export needs a call site there, not a use for it here.
-Tests sit beside the code and import it by relative path, so they are not a reason to export
-anything from `src/index.ts`.
+nomad-hud and bosun vendor this module through their own `vendor-shell-parse` script. A new export needs a
+call site there, not a use for it here. Tests sit beside the code and import it by relative path, so they
+are not a reason to export anything.
 
 ## Dependencies
 
