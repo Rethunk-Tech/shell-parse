@@ -149,6 +149,33 @@ test('parallel with flags and no command runs nothing', () => {
   expect(argv('parallel echo ::: a b')).toContain('echo')
 })
 
+test('an appended write adds to the recorded body instead of replacing it', () => {
+  const after = (c: string, files: Record<string, string>) => {
+    const script = scriptOf(c, parse, undefined, {
+      files: new Map(Object.entries(files)),
+      cwd: '/s',
+    })
+    commandsOf(script as Script, { cwd: '/s', home: '/h' })
+    return [...((script as Script).files ?? [])]
+  }
+  expect(after('echo git stash >> /s/x.sh', { '/s/x.sh': 'pkill node\n' })).toEqual([
+    ['/s/x.sh', 'pkill node\ngit stash'],
+  ])
+  expect(after("tee -a /s/a.sh <<< 'git stash'", { '/s/a.sh': 'pkill node\n' })).toEqual([
+    ['/s/a.sh', 'pkill node\ngit stash'],
+  ])
+  // Each write appends once, though the script is walked more than once.
+  expect(after(`printf 'a\\n' >> /s/x.sh; printf 'b\\n' >> /s/x.sh`, { '/s/x.sh': '' })).toEqual([
+    ['/s/x.sh', 'a\nb\n'],
+  ])
+  // Appending to a file no one recorded leaves a body only the run knows.
+  expect(after('echo git stash >> /s/x.sh', {})).toEqual([])
+  // A plain write still replaces.
+  expect(after('echo git stash > /s/x.sh', { '/s/x.sh': 'pkill node\n' })).toEqual([
+    ['/s/x.sh', 'git stash'],
+  ])
+})
+
 test('a bash -c script is read as the calls it runs', () => {
   expect(argv("bash -c 'ls /a; cat b'")).toContain('cat b')
 })

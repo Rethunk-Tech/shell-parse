@@ -22,6 +22,22 @@ const stdoutRedirect = (r: Redirect) =>
   (r.op.includes('>') || r.op === '&>') &&
   (r.fd === undefined || r.fd === '1') &&
   !DESCRIPTOR.test(r.target?.value ?? '')
+// `>>` and `&>>` add to what the file holds.
+const appending = (r: Redirect) => r.op === '>>' || r.op === '&>>'
+// `tee -a` adds to each file rather than replacing it.
+const TEE_APPEND = new Set(['-a', '--append'])
+// A script is walked more than once (as the texts it runs are parsed, then by the caller), so an append is
+// recorded once per call site: the same body a re-walk reaches again is already in the file.
+const APPENDED = new WeakMap<Script, Set<string>>()
+const firstAppend = (script: Script, key: string) => {
+  const seen = APPENDED.get(script) ?? new Set<string>()
+  APPENDED.set(script, seen)
+  if (seen.has(key)) {
+    return false
+  }
+  seen.add(key)
+  return true
+}
 // What a call's `> file` leaves in the file, when the call is one whose output is written out.
 const redirected = (call: Call, args: Word[], fed: Piece | undefined) => {
   // A redirect with no command (`> file`) writes nothing, so the file is empty.
@@ -47,18 +63,28 @@ export const recordFileOps = (w: W, call: Call, own: Redirect[], ctx: Ctx) => {
     const path = word?.value === undefined ? undefined : joinPath(dir, word.value)
     return path?.startsWith('/') === true ? path : undefined
   }
-  const set = (path: string | undefined, text: string | undefined) => {
+  const set = (path: string | undefined, text: string | undefined, append = false) => {
     if (path === undefined) {
       return
     }
     copies.delete(path)
-    if (text === undefined || text.includes(DYN)) {
+    const before = files.get(path)
+    // An append to a body no one recorded (a file on disk) or one only the run knows leaves it unknown.
+    if (text === undefined || text.includes(DYN) || (append && before === undefined)) {
       files.delete(path)
       unknown.add(path)
-    } else {
+      return
+    }
+    if (!append) {
       files.set(path, text)
       unknown.delete(path)
+      return
     }
+    // A re-walk of the same call site must not add the same body a second time.
+    if (firstAppend(script, `${path}\u0000${call.start ?? -1}\u0000${text}`)) {
+      files.set(path, before + text)
+    }
+    unknown.delete(path)
   }
   const copy = (from: string | undefined, to: string) => {
     if (from !== undefined && files.has(from)) {
@@ -75,8 +101,9 @@ export const recordFileOps = (w: W, call: Call, own: Redirect[], ctx: Ctx) => {
   const args = call.argv.slice(1).filter((a) => !(a.value ?? '').startsWith('-'))
   const target = call.redirects.find(stdoutRedirect)
   if (call.name === 'tee') {
+    const append = call.argv.some((a) => TEE_APPEND.has(a.value ?? ''))
     for (const a of args) {
-      set(abs(a), fed?.text)
+      set(abs(a), fed?.text, append)
     }
   } else if (COPIERS.has(call.name) && args.length >= 2) {
     // With more than two operands the last is a directory, and each source lands in it under its own name.
@@ -88,6 +115,6 @@ export const recordFileOps = (w: W, call: Call, own: Redirect[], ctx: Ctx) => {
       }
     }
   } else if (target !== undefined) {
-    set(abs(target.target), redirected(call, args, fed))
+    set(abs(target.target), redirected(call, args, fed), appending(target))
   }
 }
