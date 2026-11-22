@@ -24,6 +24,10 @@ const stdoutRedirect = (r: Redirect) =>
   !DESCRIPTOR.test(r.target?.value ?? '')
 // What a call's `> file` leaves in the file, when the call is one whose output is written out.
 const redirected = (call: Call, args: Word[], fed: Piece | undefined) => {
+  // A redirect with no command (`> file`) writes nothing, so the file is empty.
+  if (call.argv.length === 0) {
+    return ''
+  }
   const decoding = call.name === 'base64' && call.argv.some((a) => DECODE.has(a.value ?? ''))
   if (!decoding) {
     return output(call)?.text

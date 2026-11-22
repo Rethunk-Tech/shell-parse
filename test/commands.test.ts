@@ -116,6 +116,14 @@ test('a stdout+stderr redirect writes the file as > does', () => {
   )
 })
 
+test('a redirect with no command truncates the file it names', () => {
+  expect(withFiles('> /s/x.sh; bash /s/x.sh', { '/s/x.sh': 'pkill node' })).toEqual([
+    '',
+    'bash /s/x.sh',
+  ])
+  expect(withFiles('> /s/x.sh; bash /s/x.sh', {})).not.toContain('pkill node')
+})
+
 test('a bash -c script is read as the calls it runs', () => {
   expect(argv("bash -c 'ls /a; cat b'")).toContain('cat b')
 })

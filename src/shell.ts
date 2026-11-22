@@ -69,8 +69,12 @@ function stmt(w: W, ctx: Ctx, s: Node): Call | undefined {
   if (cmd) {
     compound(w, inner, cmd)
   } else if (own.length > 0) {
-    // `> file` alone still truncates file.
-    w.out.calls.push(callOf(inner, { argv: [], wrappers: [] }, new Map(), range(c, s)))
+    const call = callOf(inner, { argv: [], wrappers: [] }, new Map(), range(c, s))
+    w.out.calls.push(call)
+    // `> file` alone still truncates file; an append leaves what is there for the file ops to add to.
+    if (own.some((r) => r.op === '>' || r.op === '>|' || r.op === '&>')) {
+      recordFileOps(w, call, own, inner)
+    }
   }
   return
 }
