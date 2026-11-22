@@ -267,9 +267,10 @@ const scriptRun = (w: W, call: Call, own: Redirect[], ctx: Ctx): Piece | undefin
   const args = call.argv.slice(1)
   if (call.name === 'eval') {
     const [only] = args
+    // eval joins its arguments and runs the result: a word's value, not the quotes that made it one word.
     return args.length === 1 && only
       ? only.script
-      : { text: args.map((a) => a.raw).join(' '), base: undefined }
+      : { text: args.map((a) => a.value ?? a.raw).join(' '), base: undefined }
   }
   const stdinBody = () =>
     own.find((r) => r.body && (r.fd === undefined || r.fd === '0'))?.body ?? ctx.stdin

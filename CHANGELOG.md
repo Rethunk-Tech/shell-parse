@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- `bash -c "$CMD"` and `eval "$CMD"` run the value the variable holds, not the source word: a known variable's command is walked, and a multi-word `eval` joins the words' values.
 - A compound pipeline stage (`(echo CMD) | sh`, `{ printf ...; } | bash`) feeds its written-out output to the next stage, so the shell's script is walked.
 - A shell's `--rcfile FILE` / `--init-file FILE` (`--rcfile=FILE`) takes its value, so `bash --rcfile x -c CMD` runs CMD instead of reading the rc file as its script.
 - An unquoted brace list or range (`{git,stash}`) and an unquoted variable that holds a blank, or any variable once IFS is set, read as a word only the run knows, since the shell expands them into several words.

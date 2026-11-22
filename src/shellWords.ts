@@ -267,6 +267,10 @@ const pieceOf = (parts: Node[], v: Val, r: ReturnType<typeof range>): Piece => {
   }
   if (parts.length === 1 && only?.Type === 'DblQuoted') {
     const text = r.raw.slice(1, -1)
+    // `"$CMD"` hands the shell the value it holds, not the source bytes: only the value has no base.
+    if (v.expands && !v.text.includes(DYN)) {
+      return { text: v.text, base: undefined }
+    }
     return text.includes('\\')
       ? { text: text.replace(LINE_CONT, '').replace(QUOTED_ESC, '$1'), base: undefined }
       : { text, base: inside }

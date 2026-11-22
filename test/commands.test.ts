@@ -99,6 +99,13 @@ test('a bash -c script is read as the calls it runs', () => {
   expect(argv("bash -c 'ls /a; cat b'")).toContain('cat b')
 })
 
+test('a shell or eval handed an expanded variable runs the value, not the source word', () => {
+  const force = `CMD='git push --force origin main'; `
+  expect(argv(`${force}bash -c "$CMD"`)).toContain('git push --force origin main')
+  expect(argv(`${force}eval "$CMD"`)).toContain('git push --force origin main')
+  expect(argv(`FOO=bar; eval echo '$FOO'`)).toContain('echo bar')
+})
+
 test('a shell option that takes a file leaves -c to run its command and no rc file', () => {
   expect(argv(`bash --rcfile /etc/bashrc -c 'git stash'`)).toEqual([
     'bash --rcfile /etc/bashrc -c git stash',
