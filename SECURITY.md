@@ -31,13 +31,17 @@ We handle the report inside the private advisory, so you see each status change 
 
 ## What is in scope
 
-- `readStored` and `useStoredState` parse whatever `localStorage` holds for a key. A crafted value
-  must reach the caller only if it passes the caller's `valid` guard, and must never throw.
+- A parsed command is untrusted text: `commandsOf` and `scriptOf` must read any Bash a shell would accept
+  without throwing, so a crafted command can neither crash nor stall a guard that walks it.
+- A guard reads those calls to decide whether a command is safe. A shape this library misses (a wrapper,
+  runner or quoting form a shell would run) lets a dangerous call through, and is in scope.
 
 ## What is out of scope
 
-- The keys and the values an application chooses to store, and what `valid` accepts.
-- Storage another script on the same origin rewrites: `localStorage` is not a trust boundary.
+- What a guard does with a call it read, and the policy it applies.
+- `shfmt` itself, and a command whose text the caller never parsed.
+- A command this library reports as unread (a `Script.unknown` file, an `opaqueStdin` producer): a guard is
+  expected to treat those as unsafe.
 
 ## Safe harbour
 
