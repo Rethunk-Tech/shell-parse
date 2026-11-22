@@ -61,7 +61,7 @@ export interface Ctx {
 export interface W {
   script: Script
   opts: WalkOptions
-  out: { calls: Call[]; missing: Set<string>; pipes: number }
+  out: { calls: Call[]; missing: Set<string>; pipes: number; expanded: number }
   stmts: (ctx: Ctx, stmts: Node[]) => void
   stmt: (ctx: Ctx, s: Node) => Call | undefined
 }

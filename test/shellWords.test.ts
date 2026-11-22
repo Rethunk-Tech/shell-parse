@@ -90,7 +90,7 @@ const walk = (text: string, env?: Map<string, string>) => {
   const w: W = {
     script: { text, file, nested: new Map(), env: undefined },
     opts: { cwd: '/s', home: '/h', known: (c) => (c.name === 'printf' ? 'out' : undefined) },
-    out: { calls: [], missing: new Set(), pipes: 0 },
+    out: { calls: [], missing: new Set(), pipes: 0, expanded: 0 },
     stmts: () => undefined,
     stmt: (c, s) => {
       const cmd = one(s, 'Cmd')

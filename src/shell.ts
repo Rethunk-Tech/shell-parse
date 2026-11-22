@@ -49,6 +49,8 @@ import { memoWalk } from './walkMemo.ts'
 
 const MAX_DEPTH = 8
 const MAX_UNROLL = 16
+// Calls of helpers that call helpers re-walk each body: past this many (a long real script needs under 2,000) a body is walked only where declared.
+const MAX_EXPANSIONS = 10_000
 const NAME = /^[A-Za-z_]\w*$/u
 const GLOB = /[*?[{]/u
 const READ_VALUES = new Set(['-d', '-i', '-n', '-N', '-p', '-t', '-u'])
@@ -368,6 +370,7 @@ const expand = (w: W, ctx: Ctx, call: Call, first: Word | undefined) => {
       : undefined
   const fn = ctx.scope.funcs.get(name)
   const shared = w.script.env?.functions.get(name)
+  w.out.expanded += fn || shared ? 1 : 0
   if (alias !== undefined) {
     const rest = call.argv.slice(1).map((a) => a.raw)
     nest(
@@ -376,9 +379,9 @@ const expand = (w: W, ctx: Ctx, call: Call, first: Word | undefined) => {
       { text: [alias, ...rest].join(' '), base: undefined },
       { sameShell: true, via: name },
     )
-  } else if (fn && ctx.depth < MAX_DEPTH) {
+  } else if (fn && ctx.depth < MAX_DEPTH && w.out.expanded <= MAX_EXPANSIONS) {
     stmt(w, { ...deeper, src: { ...fn.src, base: undefined }, depth: ctx.depth + 1 }, fn.body)
-  } else if (shared && ctx.depth < MAX_DEPTH) {
+  } else if (shared && ctx.depth < MAX_DEPTH && w.out.expanded <= MAX_EXPANSIONS) {
     stmt(w, { ...deeper, src: srcOf(shared.text, undefined), depth: ctx.depth + 1 }, shared.body)
   }
 }
@@ -414,7 +417,7 @@ const walkFresh = (script: Script, opts: WalkOptions) => {
   const w: W = {
     script,
     opts,
-    out: { calls: [], missing: new Set(), pipes: 0 },
+    out: { calls: [], missing: new Set(), pipes: 0, expanded: 0 },
     stmts: (ctx, stmts) => stmtsIn(w, ctx, stmts),
     stmt: (ctx, s) => stmt(w, ctx, s),
   }

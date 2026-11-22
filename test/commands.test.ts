@@ -433,3 +433,14 @@ test('a repeated walk of one script is served from the last one until an input c
   const after = commandsOf(script, opts).map((c) => c.argv.map((w) => w.text).join(' '))
   expect(after).toContain('git push origin main')
 })
+
+test('helpers that each call two earlier helpers are walked inside a bounded number of expansions', () => {
+  const fns = Array.from(
+    { length: 450 },
+    (_, n) => `f${n}() { echo ${n}; ${n > 1 ? `f${n - 1}; f${n >> 1}` : ':'}; }`,
+  )
+  const started = performance.now()
+  const found = argv(`${fns.join('\n')}\nf449`)
+  expect(found.length).toBeGreaterThan(60)
+  expect(performance.now() - started).toBeLessThan(2000)
+})
