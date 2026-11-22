@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- `parallel -j4` with no command runs nothing, instead of reading its last flag as the command.
 - A script file edited in place is walked again: the walk key holds the file contents, not just how many entries the maps have.
 - `set +a` and `set +o allexport` turn allexport off, and `set -- -a` names positional parameters rather than turning it on.
 - A shell a command runs in a child process sees the exported names and the call's own prefix assignments, not the parent's unexported variables.

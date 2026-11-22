@@ -143,6 +143,12 @@ test('set -a exports later assignments until +a or +o allexport, and -- stops th
   expect(env('set -- -a; FOO=bar; echo')).not.toContain('FOO')
 })
 
+test('parallel with flags and no command runs nothing', () => {
+  expect(argv('parallel -j4')).toEqual(['parallel -j4'])
+  expect(argv('parallel -j4 -- git push --force')).toContain('git push --force')
+  expect(argv('parallel echo ::: a b')).toContain('echo')
+})
+
 test('a bash -c script is read as the calls it runs', () => {
   expect(argv("bash -c 'ls /a; cat b'")).toContain('cat b')
 })

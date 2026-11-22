@@ -290,14 +290,11 @@ export const runnerPieces = (call: Call): Piece[] => {
     })
   } else if (call.name === 'parallel') {
     const end = values.findIndex((v) => v === ':::' || v === '::::')
-    pieces.push(
-      joinedRaw(
-        args.slice(
-          values.findIndex((v) => !v?.startsWith('-')),
-          end < 0 ? undefined : end,
-        ),
-      ),
-    )
+    const at = values.findIndex((v) => !v?.startsWith('-'))
+    // `parallel -j4` names no command: its flags alone run nothing.
+    if (at >= 0) {
+      pieces.push(joinedRaw(args.slice(at, end < 0 ? undefined : end)))
+    }
   } else if (
     call.name === 'npx' ||
     (call.name === 'npm' && NPM_EXEC.has(values.find((v) => !v?.startsWith('-')) ?? ''))
