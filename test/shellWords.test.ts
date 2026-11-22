@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test'
+import { defineAliases } from '../src/shellAlias.ts'
 import { type Call, DYN, LAST_JOB, many, one, type Word } from '../src/shellNodes.ts'
 import {
   ASSIGN_WORD,
@@ -7,7 +8,6 @@ import {
   baseName,
   type Ctx,
   cloneScope,
-  defineAliases,
   gitCommand,
   gitVerb,
   hasShort,
@@ -92,6 +92,7 @@ const walk = (text: string, env?: Map<string, string>) => {
     opts: { cwd: '/s', home: '/h', known: (c) => (c.name === 'printf' ? 'out' : undefined) },
     out: { calls: [], missing: new Set(), pipes: 0, expanded: 0 },
     stmts: () => undefined,
+    nest: () => undefined,
     stmt: (c, s) => {
       const cmd = one(s, 'Cmd')
       if (cmd?.Type !== 'CallExpr') {

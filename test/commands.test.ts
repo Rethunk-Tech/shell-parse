@@ -470,3 +470,51 @@ test('a repeat walk of the same command over the same script files is served fro
   expect(again.ms).toBeLessThan(first.ms / 5)
   expect(walk(`${body(2)}\nh299`).found[0]).not.toBe(first.found[0])
 })
+
+const spelled = (command: string) =>
+  calls(command).map((c) => c.argv.map((w) => w.text.replaceAll(DYN, '?')).join(' '))
+
+test('an unquoted brace list or a variable that splits is words no one can name; quoted ones stay one', () => {
+  expect(spelled('{git,stash}')).toEqual(['?'])
+  expect(spelled('git {reset,--hard}')).toEqual(['git ?'])
+  expect(spelled('echo "{a,b}" \'{a,b}\'')).toEqual(['echo {a,b} {a,b}'])
+  expect(spelled("x='/tmp/a /home/u'; rm -rf $x")).toContain('rm -rf ?')
+  expect(spelled('x=\'a b\'; echo "$x"')).toContain('echo a b')
+  expect(spelled('IFS=,; x=git,reset,--hard; $x')).toContain('?')
+  expect(spelled('x=a; echo $x')).toContain('echo a')
+})
+
+test('env -S takes its script attached, with option letters before it', () => {
+  for (const c of [
+    'env -S"git reset --hard"',
+    "env -vS'git reset --hard'",
+    "env -iS'git reset --hard'",
+  ]) {
+    expect([c, spelled(c).includes('git reset --hard')]).toEqual([c, true])
+  }
+})
+
+test('an alias ending in a blank expands the next word; a value only the run knows is unknown; hash -p binds a name', () => {
+  expect(spelled("alias k='git ' r='reset --hard'\nk r")).toContain('git reset --hard')
+  expect(spelled('alias x="$(echo git stash)"\nx').at(-1)).toBe('?')
+  expect(spelled('hash -p /usr/bin/git g; g stash')).toContain('/usr/bin/git stash')
+})
+
+test('git-<verb> programs are git with the verb', () => {
+  expect(spelled('/usr/libexec/git-core/git-reset --hard')).toEqual(['git reset --hard'])
+})
+
+test('text arithmetic, declare, printf -v, read and a @P expansion walk the code they evaluate', () => {
+  for (const c of [
+    "x='a[$(git stash)]'; echo $((x))",
+    "x='a[$(git stash)0]'; (( x ))",
+    `x='$(git stash)'; echo \${x@P}`,
+    "declare 'a[$(git stash)0]=1'",
+    "printf -v 'a[$(git stash)0]' x",
+    "read -r 'a[$(git stash)0]'",
+    "let 'a[$(git stash)0]'",
+  ]) {
+    expect([c, spelled(c).some((l) => l.startsWith('git stash'))]).toEqual([c, true])
+  }
+  expect(spelled('x=3; echo $((x+1))')).not.toContain('git stash')
+})

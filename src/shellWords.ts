@@ -2,6 +2,7 @@
 // and the wrappers that run another command. No engine imports.
 
 import { ansiC } from './ansi.ts'
+import { evaluated } from './shellEval.ts'
 import {
   type Call,
   charIndex,
@@ -29,7 +30,7 @@ interface Src {
   at: (byte: number) => number
   base: number | undefined
 }
-interface Scope {
+export interface Scope {
   env: Map<string, string>
   exported: Set<string>
   // set -a: every later assignment is exported.
@@ -64,6 +65,8 @@ export interface W {
   out: { calls: Call[]; missing: Set<string>; pipes: number; expanded: number }
   stmts: (ctx: Ctx, stmts: Node[]) => void
   stmt: (ctx: Ctx, s: Node) => Call | undefined
+  // Walks text a shell would evaluate as code.
+  nest: (ctx: Ctx, text: string) => void
 }
 interface Val {
   text: string
@@ -75,6 +78,11 @@ const LINE_CONT = /\\\n/gu
 const BARE_ESC = /\\(.)/gsu
 const QUOTED_ESC = /\\([$`"\\])/gu
 export const ASSIGN_WORD = /^(?<name>[A-Za-z_]\w*)=(?<value>.*)$/su
+// An unquoted brace list or range expands to several words before the command runs.
+const BRACE = /(?<!\$)\{[^{}]*(?:,|\.\.)[^{}]*\}/u
+const EVALUATING = new Set(['ArithmCmd', 'LetClause', 'TestClause'])
+const SPLITS = /[ \t\n]/u
+const PROMPT_EXPANSION = 84
 const COMPLEX_PARAM = ['Exp', 'Index', 'Length', 'Excl', 'Repl', 'Slice', 'Names', 'Width']
 const LOOKUP = /^-[vV]/u
 export const srcOf = (text: string, base: number | undefined): Src => ({
@@ -82,15 +90,6 @@ export const srcOf = (text: string, base: number | undefined): Src => ({
   at: charIndex(text),
   base,
 })
-// `alias name=value` words bind the name for the calls after it.
-export const defineAliases = (scope: Scope, call: Call) => {
-  for (const a of call.name === 'alias' ? call.argv.slice(1) : []) {
-    const eq = a.value?.indexOf('=') ?? -1
-    if (a.value !== undefined && eq > 0) {
-      scope.aliases.set(a.value.slice(0, eq), a.value.slice(eq + 1))
-    }
-  }
-}
 export const cloneScope = (s: Scope): Scope => ({
   env: new Map(s.env),
   exported: new Set(s.exported),
@@ -160,6 +159,9 @@ const substCtx = (ctx: Ctx): Ctx => ({
 // Substitutions anywhere under a node no other rule reads (a test, arithmetic, a case pattern).
 export const anyIn = (w: W, ctx: Ctx, n: unknown) =>
   walkNodes(n, (node) => {
+    if (EVALUATING.has(String(node.Type))) {
+      evaluated(w, ctx, node)
+    }
     const subst = node.Type === 'CmdSubst' || node.Type === 'ProcSubst'
     if (subst) {
       w.stmts(substCtx(ctx), many(node, 'Stmts'))
@@ -182,17 +184,24 @@ const isSourceZero = (p: Node) => {
     !COMPLEX_PARAM.some((k) => k !== 'Index' && Boolean(p[k]))
   )
 }
-const param = (w: W, ctx: Ctx, p: Node): Val => {
+// Text that arithmetic, a test, a declared name or `${x@P}` evaluates runs the `$(...)` it holds, even
+// when it sits in single quotes or in a variable.
+const param = (w: W, ctx: Ctx, p: Node, quoted: boolean): Val => {
+  const exp = one(p, 'Exp')
+  if (exp?.Op === PROMPT_EXPANSION && str(many(one(exp, 'Word'), 'Parts')[0], 'Value') === 'P') {
+    evaluated(w, ctx, { Type: 'ParamExp', Param: one(p, 'Param') })
+  }
   if (!isSourceZero(p) && COMPLEX_PARAM.some((k) => Boolean(p[k]))) {
     anyIn(w, ctx, p)
     return dyn(false)
   }
   const name = isSourceZero(p) ? 'BASH_SOURCE' : (str(one(p, 'Param'), 'Value') ?? '')
-  return {
-    text: name === '!' ? LAST_JOB : (ctx.scope.env.get(name) ?? DYN),
-    expands: true,
-    subst: false,
+  const text = name === '!' ? LAST_JOB : (ctx.scope.env.get(name) ?? DYN)
+  // An unquoted variable splits into words at its blanks, or at IFS once the script has set it.
+  if (!quoted && (SPLITS.test(text) || ctx.scope.env.has('IFS'))) {
+    return dyn(false)
   }
+  return { text, expands: true, subst: false }
 }
 const cmdSubst = (w: W, ctx: Ctx, p: Node): Val => {
   const stmts = many(p, 'Stmts')
@@ -218,6 +227,9 @@ const partValue = (w: W, ctx: Ctx, p: Node, at: { quoted: boolean; lead: boolean
       if (quoted) {
         return lit(v.replace(QUOTED_ESC, '$1'))
       }
+      if (BRACE.test(v)) {
+        return dyn(false)
+      }
       const bare = v.replace(BARE_ESC, '$1')
       return lit(lead && v.startsWith('~') ? tilde(w, bare) : bare)
     }
@@ -228,13 +240,16 @@ const partValue = (w: W, ctx: Ctx, p: Node, at: { quoted: boolean; lead: boolean
         many(p, 'Parts').map((q) => partValue(w, ctx, q, { quoted: true, lead: false })),
       )
     case 'ParamExp':
-      return param(w, ctx, p)
+      return param(w, ctx, p, quoted)
     case 'CmdSubst':
       return cmdSubst(w, ctx, p)
     case 'ProcSubst':
       w.stmts(substCtx(ctx), many(p, 'Stmts'))
       return dyn(true)
     default:
+      if (p.Type === 'ArithmExp') {
+        evaluated(w, ctx, p)
+      }
       anyIn(w, ctx, p)
       return dyn(false)
   }

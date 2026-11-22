@@ -1,7 +1,8 @@
 // What a call feeds the next stage of a pipeline, and how a shell call reads its script. No engine imports.
 import { ansiC } from './ansi.ts'
-import type { Call, Piece, Redirect } from './shellNodes.ts'
-import { type Ctx, SHELLS, shellFlags } from './shellWords.ts'
+import { wrapperCwd } from './runners.ts'
+import type { Call, Piece, Redirect, Word, Wrapper } from './shellNodes.ts'
+import { type Ctx, nameOf, SHELLS, shellFlags } from './shellWords.ts'
 
 const ECHO_FLAG = /^-[neE]+$/u
 // printf's directives (`%s`, `%b`, `%%`, `%5d`): each takes the next argument, and the format runs again while
@@ -105,3 +106,53 @@ export const bindOwnPath = (
     scope.env.set('BASH_SOURCE', file)
   }
 }
+
+const GIT_PROGRAM = /^git-(?<verb>[a-z][a-z-]*)$/u
+// git's own programs (`git-reset`) are git run with the verb, so every rule on the verb applies.
+export const gitProgramSpelled = (argv: Word[]): Word[] => {
+  const dash = GIT_PROGRAM.exec(nameOf(argv[0]))?.groups?.verb
+  const [first] = argv
+  return dash !== undefined && first
+    ? [
+        { ...first, text: 'git', value: 'git', raw: 'git' },
+        { ...first, text: dash, value: dash, raw: dash, start: undefined, end: undefined },
+        ...argv.slice(1),
+      ]
+    : argv
+}
+
+// A long script sets hundreds of variables and exports a few, and every call takes a copy: walk the smaller side.
+const exportedEnv = ({ env, exported }: Ctx['scope']): [string, string][] =>
+  exported.size < env.size
+    ? [...exported].flatMap((k) => {
+        const v = env.get(k)
+        return v === undefined ? [] : [[k, v] as [string, string]]
+      })
+    : [...env].filter(([k]) => exported.has(k))
+export const callOf = (
+  ctx: Ctx,
+  { argv, wrappers }: { argv: Word[]; wrappers: Wrapper[] },
+  assigns: Map<string, string>,
+  r: { start: number | undefined; end: number | undefined },
+): Call => ({
+  argv: gitProgramSpelled(argv),
+  name: nameOf(gitProgramSpelled(argv)[0]),
+  wrappers,
+  assigns,
+  env: new Map([...exportedEnv(ctx.scope), ...assigns]),
+  redirects: ctx.redirects,
+  cwd: wrapperCwd(wrappers, ctx.scope.cwd),
+  start: r.start,
+  end: r.end,
+  subst: ctx.subst,
+  loop: ctx.loop,
+  bounded: ctx.loop && ctx.bounded === true,
+  background: ctx.background,
+  nested: ctx.nested,
+  opaqueStdin: false,
+  stdinArgs: wrappers.some((x) => x.name === 'xargs') || ctx.outer.includes('xargs'),
+  pipes: ctx.pipes,
+  via: ctx.via,
+  file: ctx.file,
+  outer: ctx.outer,
+})

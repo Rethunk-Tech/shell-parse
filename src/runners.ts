@@ -38,9 +38,15 @@ const attachedExec = (words: Word[]) =>
     }
     return [{ text: cmd, base: undefined }]
   })
+// env's -S takes its script attached too: `-S'git stash'`, `-vS'git stash'`.
+const ENV_SPLIT = /^-[iv0]*S(?<script>.+)$/su
 const optionValue = (words: Word[], names: Set<string>) =>
   words.flatMap((a, i) => {
     const v = a.value ?? ''
+    const attached = names.has('-S') ? ENV_SPLIT.exec(v)?.groups?.script : undefined
+    if (attached !== undefined) {
+      return [{ text: attached, base: undefined }]
+    }
     const eq = v.indexOf('=')
     if (eq > 0 && names.has(v.slice(0, eq))) {
       return [{ text: v.slice(eq + 1), base: undefined }]

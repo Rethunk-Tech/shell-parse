@@ -2,9 +2,11 @@
 // and no spawning: the caller runs `shfmt --to-json` and passes each parse in.
 
 import { recordFileOps } from './fileOps.ts'
-import { runnerPieces, wrapperCwd } from './runners.ts'
+import { runnerPieces } from './runners.ts'
 import { fileScriptOf } from './scriptFile.ts'
+import { aliasText, defineAliases } from './shellAlias.ts'
 import { completing } from './shellComplete.ts'
+import { evaluated, evaluatedNames, READ_VALUES, READS } from './shellEval.ts'
 import { markExported, setsAllexport } from './shellExport.ts'
 import {
   BODY_LISTS,
@@ -22,19 +24,16 @@ import {
   str,
   type WalkOptions,
   type Word,
-  type Wrapper,
 } from './shellNodes.ts'
-import { bindOwnPath, feedOf, scriptRuns, shellFromPipe } from './shellPieces.ts'
+import { bindOwnPath, callOf, feedOf, scriptRuns, shellFromPipe } from './shellPieces.ts'
 import {
   anyIn,
   assignsOf,
   type Ctx,
   cloneScope,
-  defineAliases,
   gitCommand,
   gitVerb,
   joinPath,
-  nameOf,
   peel,
   range,
   readsStdin,
@@ -53,7 +52,6 @@ const MAX_UNROLL = 16
 const MAX_EXPANSIONS = 10_000
 const NAME = /^[A-Za-z_]\w*$/u
 const GLOB = /[*?[{]/u
-const READ_VALUES = new Set(['-d', '-i', '-n', '-N', '-p', '-t', '-u'])
 
 function stmtsIn(w: W, ctx: Ctx, stmts: Node[]) {
   for (const s of stmts) {
@@ -173,6 +171,7 @@ const compound = (w: W, ctx: Ctx, cmd: Node) => {
       )
       break
     case 'DeclClause':
+      evaluated(w, ctx, many(cmd, 'Args'))
       bindAll(w, ctx, cmd, assignsOf(w, ctx, many(cmd, 'Args')))
       break
     default: {
@@ -194,41 +193,6 @@ const bindAll = (w: W, ctx: Ctx, n: Node, assigns: Map<string, string>): undefin
   markExported(w, ctx, n, assigns.keys())
   w.out.calls.push(callOf(ctx, { argv: [], wrappers: [] }, assigns, range(ctx, n)))
 }
-// A long script sets hundreds of variables and exports a few, and every call takes a copy: walk the smaller side.
-const exportedEnv = ({ env, exported }: Ctx['scope']): [string, string][] =>
-  exported.size < env.size
-    ? [...exported].flatMap((k) => {
-        const v = env.get(k)
-        return v === undefined ? [] : [[k, v] as [string, string]]
-      })
-    : [...env].filter(([k]) => exported.has(k))
-const callOf = (
-  ctx: Ctx,
-  { argv, wrappers }: { argv: Word[]; wrappers: Wrapper[] },
-  assigns: Map<string, string>,
-  r: { start: number | undefined; end: number | undefined },
-): Call => ({
-  argv,
-  name: nameOf(argv[0]),
-  wrappers,
-  assigns,
-  env: new Map([...exportedEnv(ctx.scope), ...assigns]),
-  redirects: ctx.redirects,
-  cwd: wrapperCwd(wrappers, ctx.scope.cwd),
-  start: r.start,
-  end: r.end,
-  subst: ctx.subst,
-  loop: ctx.loop,
-  bounded: ctx.loop && ctx.bounded === true,
-  background: ctx.background,
-  nested: ctx.nested,
-  opaqueStdin: false,
-  stdinArgs: wrappers.some((x) => x.name === 'xargs') || ctx.outer.includes('xargs'),
-  pipes: ctx.pipes,
-  via: ctx.via,
-  file: ctx.file,
-  outer: ctx.outer,
-})
 const callExpr = (w: W, ctx: Ctx, cmd: Node, own: Redirect[]) => {
   const assigns = assignsOf(w, ctx, many(cmd, 'Assigns'))
   const words = many(cmd, 'Args').map((a) => word(w, ctx, a))
@@ -266,6 +230,7 @@ const callExpr = (w: W, ctx: Ctx, cmd: Node, own: Redirect[]) => {
 // What cd, read and unset change for the rest of the command.
 const builtin = (w: W, ctx: Ctx, call: Call) => {
   const args = call.argv.slice(1)
+  evaluatedNames(w, ctx, call)
   if (call.name === 'cd' || call.name === 'pushd') {
     const [target] = args.filter((a) => !(a.value?.startsWith('-') && a.value !== '-'))
     const value = target ? target.value : w.opts.home
@@ -273,7 +238,7 @@ const builtin = (w: W, ctx: Ctx, call: Call) => {
       value === undefined || value === '-' ? undefined : joinPath(ctx.scope.cwd, value)
   } else if (call.name === 'popd') {
     ctx.scope.cwd = undefined
-  } else if (call.name === 'read' || call.name === 'mapfile' || call.name === 'readarray') {
+  } else if (READS.has(call.name)) {
     for (const [i, a] of args.entries()) {
       const before = args[i - 1]?.value ?? ''
       if (a.value !== undefined && NAME.test(a.value) && !READ_VALUES.has(before)) {
@@ -372,11 +337,10 @@ const expand = (w: W, ctx: Ctx, call: Call, first: Word | undefined) => {
   const shared = w.script.env?.functions.get(name)
   w.out.expanded += fn || shared ? 1 : 0
   if (alias !== undefined) {
-    const rest = call.argv.slice(1).map((a) => a.raw)
     nest(
       w,
       deeper,
-      { text: [alias, ...rest].join(' '), base: undefined },
+      { text: aliasText(w, ctx, alias, call.argv.slice(1)), base: undefined },
       { sameShell: true, via: name },
     )
   } else if (fn && ctx.depth < MAX_DEPTH && w.out.expanded <= MAX_EXPANSIONS) {
@@ -420,6 +384,8 @@ const walkFresh = (script: Script, opts: WalkOptions) => {
     out: { calls: [], missing: new Set(), pipes: 0, expanded: 0 },
     stmts: (ctx, stmts) => stmtsIn(w, ctx, stmts),
     stmt: (ctx, s) => stmt(w, ctx, s),
+    nest: (ctx, text) =>
+      nest(w, ctx, { text: `: ${text}`, base: undefined }, { sameShell: false, via: ctx.via }),
   }
   const env = new Map(Object.entries(opts.vars ?? {}))
   if (opts.home !== undefined && !env.has('HOME')) {

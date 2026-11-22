@@ -4,6 +4,11 @@
 
 ### Fixed
 
+- An unquoted brace list or range (`{git,stash}`) and an unquoted variable that holds a blank, or any variable once IFS is set, read as a word only the run knows, since the shell expands them into several words.
+- `env -S'git stash'` and `env -vS'git stash'`, with the script attached to the flag, are read as the script they run.
+- An alias that ends in a blank hands the next word to alias expansion; an alias whose value only the run knows reads as a program no one can name; `hash -p PATH NAME` binds NAME as an alias does.
+- git's own programs (`/usr/libexec/git-core/git-reset`, `git-stash`) read as `git reset`, `git stash`.
+- Text that arithmetic, `let`, `[[ ]]`, `declare`, `printf -v`, `read` or `${x@P}` evaluates is walked for the `$(...)` it holds.
 - `commandsOf` keeps its last 48 walks across scripts, keyed by command text, script file contents, alias and function snapshot and options, so a repeat guard of an unchanged 108 KB script is a lookup; an edited file is walked again.
 - A script whose functions call each other in a tree no longer walks every call's body again without limit: past 10,000 expansions a body is walked once, where it is declared. A 100 KB script of such helpers took 22 s to walk.
 - A command tmux starts (`new-session`, `new-window`, `split-window`, `send-keys`, and `run-shell` or `if-shell` with `-b`) is read as detached, so its calls carry `background`.
