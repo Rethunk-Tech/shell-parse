@@ -187,6 +187,23 @@ test('scriptOfAsync takes the same read files and cwd as scriptOf', async () => 
   expect(names).toContain('git push origin main')
 })
 
+test('an IFS in opts.vars splits a variable only where its value holds that character', () => {
+  const echo = (vars: Record<string, string>) =>
+    calls('x=hello; echo $x', { cwd: '/s', home: '/h', vars })
+      .at(-1)
+      ?.argv.map((w) => w.text) ?? []
+  expect(echo({ IFS: ' \t\n' })).toEqual(['echo', 'hello'])
+  expect(echo({ IFS: ',' })).toEqual(['echo', 'hello'])
+  expect(echo({ IFS: '' })).toEqual(['echo', 'hello'])
+  // A value holding a character IFS names is several words.
+  expect(echo({ IFS: 'l' })).toEqual(['echo', DYN])
+  expect(
+    calls('IFS=,; x=a,b; echo $x')
+      .at(-1)
+      ?.argv.map((w) => w.text),
+  ).toEqual(['echo', DYN])
+})
+
 test('a bash -c script is read as the calls it runs', () => {
   expect(argv("bash -c 'ls /a; cat b'")).toContain('cat b')
 })

@@ -83,7 +83,6 @@ export const ASSIGN_WORD = /^(?<name>[A-Za-z_]\w*)=(?<value>.*)$/su
 // An unquoted brace list or range expands to several words before the command runs.
 const BRACE = /(?<!\$)\{[^{}]*(?:,|\.\.)[^{}]*\}/u
 const EVALUATING = new Set(['ArithmCmd', 'LetClause', 'TestClause'])
-const SPLITS = /[ \t\n]/u
 const PROMPT_EXPANSION = 84
 const COMPLEX_PARAM = ['Exp', 'Index', 'Length', 'Excl', 'Repl', 'Slice', 'Names', 'Width']
 const LOOKUP = /^-[vV]/u
@@ -173,14 +172,18 @@ const tilde = (w: W, text: string) => {
   const home = w.opts.home
   return home !== undefined && (text === '~' || text.startsWith('~/')) ? home + text.slice(1) : text
 }
+// Default IFS: a character it names makes an unquoted variable several words, so an IFS passed as the
+// default splits as the default does.
+const DEFAULT_IFS = ' \t\n'
+const splits = (text: string, ifs: string | undefined) =>
+  [...text].some((ch) => (ifs ?? DEFAULT_IFS).includes(ch))
 // `${BASH_SOURCE[0]}` is the script's own path, like $0 and $BASH_SOURCE.
 const isSourceZero = (p: Node) => {
-  const index = one(p, 'Index')
+  const parts = many(one(p, 'Index'), 'Parts')
   return (
     str(one(p, 'Param'), 'Value') === 'BASH_SOURCE' &&
-    index !== undefined &&
-    many(index, 'Parts').length === 1 &&
-    str(many(index, 'Parts')[0], 'Value') === '0' &&
+    parts.length === 1 &&
+    str(parts[0], 'Value') === '0' &&
     !COMPLEX_PARAM.some((k) => k !== 'Index' && Boolean(p[k]))
   )
 }
@@ -197,8 +200,8 @@ const param = (w: W, ctx: Ctx, p: Node, quoted: boolean): Val => {
   }
   const name = isSourceZero(p) ? 'BASH_SOURCE' : (str(one(p, 'Param'), 'Value') ?? '')
   const text = name === '!' ? LAST_JOB : (ctx.scope.env.get(name) ?? DYN)
-  // An unquoted variable splits into words at its blanks, or at IFS once the script has set it.
-  if (!quoted && (SPLITS.test(text) || ctx.scope.env.has('IFS'))) {
+  // An unquoted variable splits into words at the IFS in effect.
+  if (!quoted && splits(text, ctx.scope.env.get('IFS'))) {
     return { ...dyn(false), splits: true }
   }
   return { text, expands: true, subst: false }
@@ -490,8 +493,8 @@ export const scriptFileOf = (call: Call, cwd: string | undefined) => {
   const runs = SHELLS.has(call.name) || call.name === 'source' || call.name === '.'
   const pre = call.argv.slice(1, at)
   // `bash < file` runs the file as `bash file` does; with -s the operands are positional parameters.
-  const noFile = !runs || dashS || name?.value === undefined
-  return noFile || pre.some((a) => NO_FILE.test(a.value ?? ''))
-    ? undefined
-    : joinPath(call.cwd ?? cwd, name.value)
+  if (!runs || dashS || name?.value === undefined || pre.some((a) => NO_FILE.test(a.value ?? ''))) {
+    return
+  }
+  return joinPath(call.cwd ?? cwd, name.value)
 }

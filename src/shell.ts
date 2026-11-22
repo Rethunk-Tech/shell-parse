@@ -105,8 +105,7 @@ const ifClause = (w: W, ctx: Ctx, n: Node | undefined) => {
     stmtsIn(w, ctx, many(n, 'Then'))
     ifClause(w, ctx, one(n, 'Else'))
   }
-}
-// A loop over written-out words runs its body once per word; otherwise the variable is only known at run.
+} // A loop over written-out words runs its body once per word; otherwise the variable is only known at run.
 const forClause = (w: W, ctx: Ctx, cmd: Node) => {
   const loop = one(cmd, 'Loop')
   const body = many(cmd, 'Do')
@@ -272,8 +271,7 @@ const builtin = (w: W, ctx: Ctx, call: Call) => {
       ctx.scope.exported.delete(a.value ?? '')
     }
   }
-}
-// The script a shell call runs: its -c string, a script file read from disk, else what it reads on
+} // The script a shell call runs: its -c string, a script file read from disk, else what it reads on
 // stdin; eval's arguments.
 const scriptRun = (w: W, call: Call, own: Redirect[], ctx: Ctx): Piece | undefined => {
   const run = fileScriptOf(w, call)
@@ -332,14 +330,12 @@ const nest = (
     return
   }
   const scope = sameShell ? ctx.scope : cloneScope(ctx.scope)
+  // A child process gets the exported names only; the call's prefix assignments reach that one process.
   if (!sameShell) {
-    // A child process gets the exported names only; the call's prefix assignments reach that one process.
     scope.env = new Map(exportedEnv(ctx.scope))
   }
-  if (assigns) {
-    for (const [k, v] of assigns) {
-      scope.env.set(k, v)
-    }
+  for (const [k, v] of assigns ?? []) {
+    scope.env.set(k, v)
   }
   bindOwnPath(scope, piece.file, runs)
   const inner = {
@@ -476,29 +472,29 @@ export const completeAsync = async (
   }
   return step.value
 }
+interface Read {
+  files: Map<string, string>
+  cwd?: string
+}
+const scriptWith = (text: string, file: Node, env: ShellEnv | undefined, read?: Read): Script => ({
+  text,
+  file,
+  nested: new Map(),
+  env,
+  files: read?.files,
+  cwd: read?.cwd,
+})
 // Parse a command and every script it runs.
-export const scriptOf = (
-  text: string,
-  parse: Parse,
-  env?: ShellEnv,
-  read?: { files: Map<string, string>; cwd?: string },
-): Script | undefined => {
+export const scriptOf = (text: string, parse: Parse, env?: ShellEnv, read?: Read) => {
   const file = parse(text)
-  return file
-    ? complete({ text, file, nested: new Map(), env, files: read?.files, cwd: read?.cwd }, parse)
-    : undefined
+  return file ? complete(scriptWith(text, file, env, read), parse) : undefined
 }
 export const scriptOfAsync = async (
   text: string,
   parse: (text: string) => Promise<Node | undefined>,
   env?: ShellEnv,
-  read?: { files: Map<string, string>; cwd?: string },
+  read?: Read,
 ): Promise<Script | undefined> => {
   const file = await parse(text)
-  return file
-    ? completeAsync(
-        { text, file, nested: new Map(), env, files: read?.files, cwd: read?.cwd },
-        parse,
-      )
-    : undefined
+  return file ? completeAsync(scriptWith(text, file, env, read), parse) : undefined
 }
