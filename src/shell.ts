@@ -81,8 +81,11 @@ const pipeline = (w: W, ctx: Ctx, cmd: Node) => {
   let feed: Piece | undefined
   for (const [stage, s] of pipelineStages(cmd).entries()) {
     const pipes = [...ctx.pipes, { id, stage }]
+    const before = w.out.calls.length
     const call = stmt(w, { ...ctx, scope: cloneScope(ctx.scope), pipes, stdin: feed }, s)
-    feed = feedOf(call)
+    // A compound stage (`(echo x) | sh`) returns no call: its last call's output is what it writes on.
+    const last = before < w.out.calls.length ? w.out.calls.at(-1) : undefined
+    feed = feedOf(call ?? last)
   }
 }
 const ifClause = (w: W, ctx: Ctx, n: Node | undefined) => {

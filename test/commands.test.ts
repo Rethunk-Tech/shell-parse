@@ -87,6 +87,14 @@ test('a script the command makes by tee, cp, ln or base64 -d is read as the body
   expect(unknown("printf 'ls\\n' > /s/k.sh; bash /s/k.sh")).toEqual([])
 })
 
+test('a compound pipeline stage feeds its written-out output to the next stage', () => {
+  expect(argv('(echo git push --force origin main) | sh')).toContain('git push --force origin main')
+  expect(argv('{ echo git push --force origin main; } | sh')).toContain(
+    'git push --force origin main',
+  )
+  expect(argv("(printf 'git stash\\n') | sh")).toContain('git stash')
+})
+
 test('a bash -c script is read as the calls it runs', () => {
   expect(argv("bash -c 'ls /a; cat b'")).toContain('cat b')
 })
