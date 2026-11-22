@@ -45,6 +45,7 @@ import {
   type W,
   word,
 } from './shellWords.ts'
+import { memoWalk } from './walkMemo.ts'
 
 const MAX_DEPTH = 8
 const MAX_UNROLL = 16
@@ -401,7 +402,7 @@ const gitAlias = (w: W, ctx: Ctx, call: Call) => {
   nest(w, deeper, { text, base: undefined }, { sameShell: !shell, via })
 }
 
-const walkScript = (script: Script, opts: WalkOptions) => {
+const walkFresh = (script: Script, opts: WalkOptions) => {
   const w: W = {
     script,
     opts,
@@ -437,9 +438,13 @@ const walkScript = (script: Script, opts: WalkOptions) => {
   return w.out
 }
 
+const walkScript = memoWalk(walkFresh)
+
 // Every call the command would run, in order: inside substitutions, subshells, loops, conditionals,
 // functions, pipelines and the scripts it hands a shell.
-export const commandsOf = (script: Script, opts: WalkOptions = {}) => walkScript(script, opts).calls
+export const commandsOf = (script: Script, opts: WalkOptions = {}) => [
+  ...walkScript(script, opts).calls,
+]
 
 type Parse = (text: string) => Node | undefined
 const missing = (script: Script) => walkScript(script, { cwd: script.cwd }).missing

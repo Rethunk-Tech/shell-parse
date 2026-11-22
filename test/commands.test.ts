@@ -420,3 +420,16 @@ test('a tmux command runs its shell command detached, except run-shell and if-sh
   expect(inner("tmux run-shell 'sleep 60'")).toBe(false)
   expect(inner("tmux if-shell 'sleep 60'")).toBe(false)
 })
+
+test('a repeated walk of one script is served from the last one until an input changes', () => {
+  const script = scriptOf('bash ./run.sh; echo done', parse) as Script
+  const opts = { cwd: '/w', home: '/h' }
+  const first = commandsOf(script, opts)
+  expect(commandsOf(script, opts)[0]).toBe(first[0])
+  // Another place, or a script file read since, is a fresh walk.
+  expect(commandsOf(script, { cwd: '/x', home: '/h' })[0]).not.toBe(first[0])
+  script.files = new Map([['/w/run.sh', 'git push origin main\n']])
+  script.nested.set('git push origin main\n', parse('git push origin main\n'))
+  const after = commandsOf(script, opts).map((c) => c.argv.map((w) => w.text).join(' '))
+  expect(after).toContain('git push origin main')
+})
