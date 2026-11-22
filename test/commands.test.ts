@@ -496,7 +496,7 @@ test('env -S takes its script attached, with option letters before it', () => {
 
 test('an alias ending in a blank expands the next word; a value only the run knows is unknown; hash -p binds a name', () => {
   expect(spelled("alias k='git ' r='reset --hard'\nk r")).toContain('git reset --hard')
-  expect(spelled('alias x="$(echo git stash)"\nx').at(-1)).toBe('?')
+  expect(calls('alias x="$(echo git stash)"\nx').at(-1)?.argv[0]?.splits).toBe(true)
   expect(spelled('hash -p /usr/bin/git g; g stash')).toContain('/usr/bin/git stash')
 })
 

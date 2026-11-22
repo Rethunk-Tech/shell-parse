@@ -24,8 +24,8 @@ export const defineAliases = (scope: Scope, call: Call) => {
   }
 }
 const BLANK_END = /\s$/u
-// An alias whose value only the run knows stands for a program no one can name.
-const UNKNOWN_ALIAS = '"$alias_value"'
+// An alias whose value only the run knows stands for a program no one can name: a brace list is a word that splits.
+const UNKNOWN_ALIAS = '{alias,value}'
 // An alias that ends in a blank hands the next word to alias expansion too.
 export const aliasText = (w: W, ctx: Ctx, alias: string, args: Word[]) => {
   const seen = new Set<string>()
