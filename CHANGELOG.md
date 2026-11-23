@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-23
+
 ### Fixed
 
 - A `local`, or a `declare` or `typeset` without `-g`, inside a function holds its value for that call only: the caller gets its own value back when the function returns, so a function's `local IFS=,` no longer keeps a later `$x` from splitting.
