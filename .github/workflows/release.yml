@@ -1,6 +1,7 @@
 name: Release
 
-# A tag `vX.Y.Z` publishes the version in package.json to GitHub Packages with the run's own token.
+# A tag `vX.Y.Z` publishes the version in package.json to npm through trusted publishing: npm trusts this
+# workflow's OIDC identity, so no token is stored anywhere.
 on:
   push:
     tags: ["v*.*.*"]
@@ -52,7 +53,8 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
-      packages: write
+      # Only this job can mint the OIDC token npm trusted publishing exchanges for a publish.
+      id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -74,18 +76,14 @@ jobs:
             exit 1
           fi
 
-      # A re-run of this tag finds its version already published, which is not an error.
+      # A version already on npm (published by hand, or a re-run of this tag) is not an error.
       - name: Publish
-        env:
-          NODE_AUTH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          echo "//npm.pkg.github.com/:_authToken=\${NODE_AUTH_TOKEN}" > "$RUNNER_TEMP/.npmrc"
-          export NPM_CONFIG_USERCONFIG="$RUNNER_TEMP/.npmrc"
           name=$(node -p "require('./package.json').name")
           version=$(node -p "require('./package.json').version")
-          if npm view "$name@$version" version --registry https://npm.pkg.github.com >/dev/null 2>&1; then
-            echo "$name@$version is already published"
+          if npm view "$name@$version" version >/dev/null 2>&1; then
+            echo "$name@$version is already on npm"
             exit 0
           fi
-          npm publish
+          npm publish --provenance --access public

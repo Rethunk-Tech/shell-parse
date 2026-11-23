@@ -1,5 +1,5 @@
 {
-  "name": "@rethunk-tech/shell-parse",
+  "name": "@rethunk/shell-parse",
   "version": "0.1.0",
   "description": "Reads a Bash command as the calls a shell would run, from shfmt's JSON syntax tree.",
   "exports": {
@@ -9,7 +9,7 @@
     "src"
   ],
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
+    "access": "public"
   },
   "license": "MIT",
   "author": "Rethunk.Tech, LLC",
