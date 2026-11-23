@@ -687,6 +687,20 @@ test('an unquoted brace list or a variable that splits is words no one can name;
   expect(spelled('x=a; echo $x')).toContain('echo a')
 })
 
+test('a local, declare or typeset in a function keeps its value to that call', () => {
+  expect(spelled("f() { local IFS=,; }; f; x='git stash'; $x")).toContain('?')
+  expect(spelled("f() { declare IFS=,; }; f; x='git stash'; $x")).toContain('?')
+  expect(spelled("f() { typeset -x IFS=,; }; f; x='git stash'; echo $x")).toContain('echo ?')
+  // The caller's own value comes back; inside the call the local one holds.
+  expect(spelled('x=a; f() { local x=b; echo $x; }; f; echo $x').slice(-2)).toEqual([
+    'echo b',
+    'echo a',
+  ])
+  // -g and a plain assignment reach the caller, as in bash.
+  expect(spelled("f() { declare -g IFS=,; }; f; x='git stash'; $x")).toContain('git stash')
+  expect(spelled("f() { IFS=,; }; f; x='git stash'; $x")).toContain('git stash')
+})
+
 test('env -S takes its script attached, with option letters before it', () => {
   for (const c of [
     'env -S"git reset --hard"',

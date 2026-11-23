@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- A `local`, or a `declare` or `typeset` without `-g`, inside a function holds its value for that call only: the caller gets its own value back when the function returns, so a function's `local IFS=,` no longer keeps a later `$x` from splitting.
 - An `IFS` in `opts.vars` splits an unquoted variable only where its value holds a character IFS names; the default IFS no longer turns every expansion unknown.
 - `npx`, `bunx`, `npm exec` and `npm x` keep a call of their own named for the runner, as `pnpm exec` does, so a guard that reads the package from the call (`npx -y pkg@2 stop`, `npx --yes kill-port@2 4780`) sees it; the command after the runner's words is still walked.
 - Appending (`>>`, `tee -a`) to a file whose body is not recorded leaves the file unread rather than unknown, so a caller reads it from disk and `bash file` walks what it finds plus the appended text.

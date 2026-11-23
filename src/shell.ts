@@ -7,7 +7,7 @@ import { fileScriptOf } from './scriptFile.ts'
 import { aliasText, defineAliases } from './shellAlias.ts'
 import { completing } from './shellComplete.ts'
 import { evaluated, evaluatedNames, READ_VALUES, READS } from './shellEval.ts'
-import { markExported, setsAllexport } from './shellExport.ts'
+import { bindNames, callFunction, setsAllexport } from './shellExport.ts'
 import {
   BODY_LISTS,
   type Call,
@@ -200,10 +200,7 @@ const compound = (w: W, ctx: Ctx, cmd: Node) => {
 }
 
 const bindAll = (w: W, ctx: Ctx, n: Node, assigns: Map<string, string>): undefined => {
-  for (const [k, v] of assigns) {
-    ctx.scope.env.set(k, v)
-  }
-  markExported(w, ctx, n, assigns.keys())
+  bindNames(w, ctx, n, assigns)
   w.out.calls.push(callOf(ctx, { argv: [], wrappers: [] }, assigns, range(ctx, n)))
 }
 const callExpr = (w: W, ctx: Ctx, cmd: Node, own: Redirect[]) => {
@@ -372,9 +369,9 @@ const expand = (w: W, ctx: Ctx, call: Call, first: Word | undefined) => {
       { sameShell: true, via: name },
     )
   } else if (fn && ctx.depth < MAX_DEPTH && w.out.expanded <= MAX_EXPANSIONS) {
-    stmt(w, { ...deeper, src: { ...fn.src, base: undefined }, depth: ctx.depth + 1 }, fn.body)
+    callFunction(w, { ...deeper, src: { ...fn.src, base: undefined } }, fn.body)
   } else if (shared && ctx.depth < MAX_DEPTH && w.out.expanded <= MAX_EXPANSIONS) {
-    stmt(w, { ...deeper, src: srcOf(shared.text, undefined), depth: ctx.depth + 1 }, shared.body)
+    callFunction(w, { ...deeper, src: srcOf(shared.text, undefined) }, shared.body)
   }
 }
 
