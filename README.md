@@ -13,4 +13,4 @@ const script = scriptOf('cd /a && git -C b log | head', parse)
 const calls = script ? commandsOf(script) : []
 ```
 
-Consumers copy `src/` into their own tree and pin the commit. It needs shfmt 3.7.0 at run time.
+Install `@rethunk-tech/shell-parse` from GitHub Packages (`@rethunk-tech:registry=https://npm.pkg.github.com` in `.npmrc`, with a token that has `read:packages`) and import its modules by path, as `@rethunk-tech/shell-parse/src/shell.ts`. It needs shfmt 3.7.0 at run time.

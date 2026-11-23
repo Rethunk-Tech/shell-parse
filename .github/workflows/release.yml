@@ -1,0 +1,91 @@
+name: Release
+
+# A tag `vX.Y.Z` publishes the version in package.json to GitHub Packages with the run's own token.
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  gate:
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    needs: gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      # fetch-depth: 0 brings the annotated tag object as well as the commit it points at.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Create the GitHub Release from the tag's own annotation
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; nothing to do."
+            exit 0
+          fi
+          subject=$(git tag -l --format='%(contents:subject)' "$TAG")
+          body=$(git tag -l --format='%(contents:body)' "$TAG")
+          [ -n "$subject" ] || subject=$(git log -1 --format='%s' "$TAG")
+          [ -n "$body" ] || body=$(git log -1 --format='%b' "$TAG")
+          gh release create "$TAG" \
+            --title "$TAG: $subject" \
+            --notes "${body:-$subject}" \
+            --verify-tag
+
+  publish:
+    needs: gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Bun
+        uses: Rethunk-Tech/gh-actions/setup-bun@346d9d280f6dfd86c9db02310039c90e2a6ddca4 # v1.31
+        with:
+          node-version: "26"
+
+      - name: Tag matches package.json
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME#v}"
+          version=$(node -p "require('./package.json').version")
+          if [ "$tag" != "$version" ]; then
+            echo "::error::Tag v$tag must match package.json version $version"
+            exit 1
+          fi
+
+      # A re-run of this tag finds its version already published, which is not an error.
+      - name: Publish
+        env:
+          NODE_AUTH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          echo "//npm.pkg.github.com/:_authToken=\${NODE_AUTH_TOKEN}" > "$RUNNER_TEMP/.npmrc"
+          export NPM_CONFIG_USERCONFIG="$RUNNER_TEMP/.npmrc"
+          name=$(node -p "require('./package.json').name")
+          version=$(node -p "require('./package.json').version")
+          if npm view "$name@$version" version --registry https://npm.pkg.github.com >/dev/null 2>&1; then
+            echo "$name@$version is already published"
+            exit 0
+          fi
+          npm publish

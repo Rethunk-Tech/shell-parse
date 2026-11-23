@@ -6,9 +6,10 @@ shfmt and passes each parse in.
 
 ## Shape
 
-- Consumers (nomad-hud, bosun) vendor `src/*.ts` byte for byte through their own `vendor-shell-parse`
+- A `vX.Y.Z` tag publishes `@rethunk-tech/shell-parse` to GitHub Packages; bosun installs it from there.
+  nomad-hud vendors `src/*.ts` byte for byte through its own `vendor-shell-parse`
   script, pinned to a commit of this repo. Never edit a vendored copy; change it here, commit, then bump the pin.
-- Relative imports keep their `.ts` extension (canon); each consumer's vendor script strips it, since nomad-hud's mod engine imports without one.
+- Relative imports keep their `.ts` extension (canon); nomad-hud's vendor script strips it, since its mod engine imports without one.
 - `shell.ts` (`commandsOf`, `scriptOf`) walks a tree; `shellWords.ts` reads words, redirects, wrappers and git
   verbs (`gitVerb`); `shellNodes.ts` is the tree's shape; `runners.ts` and `shellExport.ts` are helpers of the walk.
 
