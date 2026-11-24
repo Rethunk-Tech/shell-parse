@@ -4,7 +4,7 @@ import { fdExec } from '../src/runners.ts'
 import { recipesOf, selectsWorkspace, workspacePatterns } from '../src/scriptFile.ts'
 import { commandsOf, completeAsync, scriptOf, scriptOfAsync } from '../src/shell.ts'
 import { DYN, type Script } from '../src/shellNodes.ts'
-import { calls, parse } from './parse.ts'
+import { calls, parse, sh } from './parse.ts'
 
 const argv = (command: string) =>
   calls(command).map((c) => c.argv.map((w) => w.text.replaceAll(DYN, '?')).join(' '))
@@ -730,10 +730,24 @@ test('text arithmetic, declare, printf -v, read and a @P expansion walk the code
     "printf -v 'a[$(git stash)0]' x",
     "read -r 'a[$(git stash)0]'",
     "let 'a[$(git stash)0]'",
+    "x='a[$(git stash)0]'; [[ 1 -eq $x ]]",
+    "[[ -v 'a[$(git stash)0]' ]]",
+    "x='a[$(git stash)0]'; [[ -n y && ( 1 -lt $x ) ]]",
   ]) {
     expect([c, spelled(c).some((l) => l.startsWith('git stash'))]).toEqual([c, true])
   }
   expect(spelled('x=3; echo $((x+1))')).not.toContain('git stash')
+})
+
+test('a [[ ]] string comparison or =~ reads its operands as text, not as code', () => {
+  for (const c of [
+    "x='$(git stash)'; [[ $x == y ]]",
+    "re='a|`|b'; [[ y =~ $re ]]",
+    "x='$(git stash)'; [[ -n $x ]]",
+  ]) {
+    expect([c, spelled(c).some((l) => l.startsWith('git stash'))]).toEqual([c, false])
+    expect([c, [...sh(c).nested.values()].includes(undefined)]).toEqual([c, false])
+  }
 })
 
 test('a word the shell splits or brace-expands says so; a quoted or plain one does not', () => {

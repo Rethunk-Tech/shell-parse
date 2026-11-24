@@ -2,7 +2,7 @@
 // and the wrappers that run another command. No engine imports.
 
 import { ansiC } from './ansi.ts'
-import { evaluated } from './shellEval.ts'
+import { evaluated, evaluatedClause } from './shellEval.ts'
 import {
   type Call,
   charIndex,
@@ -159,7 +159,7 @@ const substCtx = (ctx: Ctx): Ctx => ({
 export const anyIn = (w: W, ctx: Ctx, n: unknown) =>
   walkNodes(n, (node) => {
     if (EVALUATING.has(String(node.Type))) {
-      evaluated(w, ctx, node)
+      evaluatedClause(w, ctx, node)
     }
     const subst = node.Type === 'CmdSubst' || node.Type === 'ProcSubst'
     if (subst) {

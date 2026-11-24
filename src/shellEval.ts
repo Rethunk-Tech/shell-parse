@@ -28,6 +28,27 @@ export const evaluated = (w: W, ctx: Ctx, n: unknown) =>
     return false
   })
 
+// In `[[ ]]` only the operands of the arithmetic comparisons (-eq -ne -le -ge -lt -gt) and of -v are evaluated as
+// code; a string comparison or `=~` reads its operands as text. Operator codes are shfmt's.
+const ARITH_TESTS = new Set([116, 117, 118, 119, 120, 121])
+const VAR_TEST = 110
+const evaluatedTest = (w: W, ctx: Ctx, t: Node | undefined) => {
+  const op = t?.Op
+  if (t?.Type === 'BinaryTest') {
+    const each = ARITH_TESTS.has(op as number) ? evaluated : evaluatedTest
+    each(w, ctx, one(t, 'X'))
+    each(w, ctx, one(t, 'Y'))
+  } else if (t?.Type === 'UnaryTest') {
+    ;(op === VAR_TEST ? evaluated : evaluatedTest)(w, ctx, one(t, 'X'))
+  } else if (t?.Type === 'ParenTest') {
+    evaluatedTest(w, ctx, one(t, 'X'))
+  }
+}
+
+// Arithmetic, `let` or `[[ ]]`: the code it evaluates.
+export const evaluatedClause = (w: W, ctx: Ctx, node: Node) =>
+  node.Type === 'TestClause' ? evaluatedTest(w, ctx, one(node, 'X')) : evaluated(w, ctx, node)
+
 export const READS = new Set(['read', 'mapfile', 'readarray'])
 export const READ_VALUES = new Set(['-d', '-i', '-n', '-N', '-p', '-t', '-u'])
 // The names read and printf -v assign are evaluated for the subscripts they hold.

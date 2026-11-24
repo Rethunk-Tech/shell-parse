@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- In `[[ ]]`, only the operands of `-eq`, `-ne`, `-lt`, `-le`, `-gt`, `-ge` and `-v` are walked as code; a string comparison or `=~` reads its operands as text, so a regex variable holding a backtick no longer leaves the script unreadable.
+
 ## [0.1.0] - 2026-11-23
 
 ### Fixed
