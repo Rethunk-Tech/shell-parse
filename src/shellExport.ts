@@ -1,6 +1,6 @@
 // Which shell variables reach a child's environment: export, an -x flag on declare, typeset or
 // local, and set -a mark them; and which names a function's local keeps to its call. No engine imports.
-import { many, type Node, one, str } from './shellNodes.ts'
+import { DYN, many, type Node, one, str, type Word } from './shellNodes.ts'
 import { type Ctx, type Scope, type W, word } from './shellWords.ts'
 
 const EXPORT_FLAG = /^-\w*x/u
@@ -94,12 +94,15 @@ export const bindNames = (w: W, ctx: Ctx, n: Node, assigns: Map<string, string>)
 }
 
 // A function runs in its caller's shell, and the names its locals shadow come back when it returns.
-export const callFunction = (w: W, ctx: Ctx, body: Node) => {
+export const callFunction = (w: W, ctx: Ctx, body: Node, argv: Word[]) => {
   const { scope } = ctx
   const outer = frames.get(scope)
   const saved: Saved = new Map()
   frames.set(scope, saved)
+  const callerArgs = scope.positional
+  scope.positional = argv.slice(1).map((a) => a.value ?? DYN)
   w.stmt({ ...ctx, depth: ctx.depth + 1 }, body)
+  scope.positional = callerArgs
   for (const [name, { value, exported }] of saved) {
     if (value === undefined) {
       scope.env.delete(name)

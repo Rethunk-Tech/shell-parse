@@ -3,7 +3,7 @@
 
 import { ansiC } from './ansi.ts'
 import { evaluated, evaluatedClause } from './shellEval.ts'
-import { knownFields, splits } from './shellFields.ts'
+import { knownFields, positionalAll, splits } from './shellFields.ts'
 import {
   type Call,
   charIndex,
@@ -24,6 +24,7 @@ import {
   type Wrapper,
   walkNodes,
 } from './shellNodes.ts'
+import { joinPath } from './shellPath.ts'
 import { hasShellFlag, WRAPPERS, type WrapperSpec } from './wrappers.ts'
 
 interface Src {
@@ -39,6 +40,8 @@ export interface Scope {
   cwd: string | undefined
   funcs: Map<string, { body: Node; src: Src }>
   aliases: Map<string, string>
+  // Inside a function: the words of its call site ($1, $2, "$@"), DYN for one only the run knows.
+  positional?: string[]
 }
 export interface Ctx {
   src: Src
@@ -89,18 +92,20 @@ const EVALUATING = new Set(['ArithmCmd', 'LetClause', 'TestClause'])
 const PROMPT_EXPANSION = 84
 const COMPLEX_PARAM = ['Exp', 'Index', 'Length', 'Excl', 'Repl', 'Slice', 'Names', 'Width']
 const LOOKUP = /^-[vV]/u
+const POSITIONAL = /^[1-9]$/u
 export const srcOf = (text: string, base: number | undefined): Src => ({
   text,
   at: charIndex(text),
   base,
 })
-export const cloneScope = (s: Scope): Scope => ({
+export const cloneScope = (s: Scope, keepArgs = true): Scope => ({
   env: new Map(s.env),
   exported: new Set(s.exported),
   allexport: s.allexport,
   cwd: s.cwd,
   funcs: new Map(s.funcs),
   aliases: new Map(s.aliases),
+  positional: keepArgs ? s.positional : undefined,
 })
 export const range = (ctx: Ctx, n: Node) => {
   const { start, end } = spanOf(ctx.src.at, n)
@@ -122,24 +127,7 @@ export const hasShort = (arg: string, letters: string) =>
 export const baseName = (path: string) => path.slice(path.lastIndexOf('/') + 1)
 export const nameOf = (w: Word | undefined) => (w?.value === undefined ? '' : baseName(w.value))
 
-// A path with `.` and `..` resolved, as the kernel walks it.
-const normalize = (path: string) => {
-  const parts: string[] = []
-  for (const p of path.split('/')) {
-    if (p === '..') {
-      parts.pop()
-    } else if (p !== '' && p !== '.') {
-      parts.push(p)
-    }
-  }
-  return `/${parts.join('/')}`
-}
-export const joinPath = (base: string | undefined, path: string) => {
-  if (path.startsWith('/')) {
-    return normalize(path)
-  }
-  return base === undefined || path.startsWith('~') ? undefined : normalize(`${base}/${path}`)
-}
+export { joinPath }
 
 const lit = (text: string): Val => ({ text, expands: false, subst: false })
 const dyn = (subst: boolean): Val => ({ text: DYN, expands: true, subst })
@@ -198,7 +186,13 @@ const param = (w: W, ctx: Ctx, p: Node, quoted: boolean): Val => {
     return dyn(false)
   }
   const name = isSourceZero(p) ? 'BASH_SOURCE' : (str(one(p, 'Param'), 'Value') ?? '')
-  const text = name === '!' ? LAST_JOB : (ctx.scope.env.get(name) ?? DYN)
+  const given = ctx.scope.positional
+  if (given !== undefined && (name === '@' || name === '*')) {
+    return positionalAll(given, name === '*', quoted) ?? { ...dyn(false), splits: true }
+  }
+  const inFunction = given !== undefined && POSITIONAL.test(name)
+  const env = inFunction ? (given[Number(name) - 1] ?? '') : (ctx.scope.env.get(name) ?? DYN)
+  const text = name === '!' ? LAST_JOB : env
   // An unquoted variable splits into words at the IFS in effect.
   const ifs = ctx.scope.env.get('IFS')
   if (!quoted && splits(text, ifs)) {

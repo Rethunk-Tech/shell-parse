@@ -328,7 +328,7 @@ const nest = (
     w.out.missing.add(piece.text)
     return
   }
-  const scope = sameShell ? ctx.scope : cloneScope(ctx.scope)
+  const scope = sameShell ? ctx.scope : cloneScope(ctx.scope, false)
   // A child process gets the exported names only and starts in cwd (`env -C` moves it); the call's prefix assignments reach it.
   if (!sameShell) {
     scope.env = new Map(exportedEnv(ctx.scope))
@@ -372,9 +372,9 @@ const expand = (w: W, ctx: Ctx, call: Call, first: Word | undefined) => {
       { sameShell: true, via: name },
     )
   } else if (fn && ctx.depth < MAX_DEPTH && w.out.expanded <= MAX_EXPANSIONS) {
-    callFunction(w, { ...deeper, src: { ...fn.src, base: undefined } }, fn.body)
+    callFunction(w, { ...deeper, src: { ...fn.src, base: undefined } }, fn.body, call.argv)
   } else if (shared && ctx.depth < MAX_DEPTH && w.out.expanded <= MAX_EXPANSIONS) {
-    callFunction(w, { ...deeper, src: srcOf(shared.text, undefined) }, shared.body)
+    callFunction(w, { ...deeper, src: srcOf(shared.text, undefined) }, shared.body, call.argv)
   }
 }
 

@@ -5,6 +5,16 @@ import { gitVerb, joinPath } from './shellWords.ts'
 import { hasShellFlag, SHELL_FLAGS } from './wrappers.ts'
 
 const joinedRaw = (words: Word[]) => ({ text: words.map((a) => a.raw).join(' '), base: undefined })
+// The words as the outer shell hands them to a wrapped program: a word it expands to a known value is that value,
+// quoted, since the program's own shell no longer has the variable; any other word stays as written.
+const handedRaw = (words: Word[]) => ({
+  text: words
+    .map((a) =>
+      a.expands && a.value !== undefined ? `'${a.value.replaceAll("'", "'\\''")}'` : a.raw,
+    )
+    .join(' '),
+  base: undefined,
+})
 const NPM_EXEC = new Set(['exec', 'x'])
 // A package runner's options that take the next word (`-p NAME`, `--cache DIR`).
 const RUNNER_VALUE_FLAGS = new Set([
@@ -164,10 +174,10 @@ const gatePieces = (args: Word[]): Piece[] => {
   while (i < args.length) {
     const v = args[i]?.value ?? ''
     if (v === '--') {
-      return [joinedRaw(args.slice(i + 1))]
+      return [handedRaw(args.slice(i + 1))]
     }
     if (!v.startsWith('-')) {
-      return GATE_VERBS.has(v) ? [] : [joinedRaw(args.slice(i))]
+      return GATE_VERBS.has(v) ? [] : [handedRaw(args.slice(i))]
     }
     i += v === '-C' || GATE_VALUE_FLAG.test(v) ? 2 : 1
   }

@@ -845,3 +845,19 @@ test('a variable of known value is the command line it holds, a loop variable ov
   expect(calls('IFS=,; x=a,b; $x').at(-1)?.argv[0]?.value).toBeUndefined()
   expect(calls('read P; $P').at(-1)?.argv[0]?.value).toBeUndefined()
 })
+
+test('gate -- sh -c "$P" hands the child shell the value P holds; an unknown P stays as written', () => {
+  expect(argv(`P='echo hi'; gate -C /x --mem 4G -- sh -c "$P"`)).toContain('echo hi')
+  expect(argv(`P='git push'; gate -- sh -c "$P"`)).toContain('git push')
+  expect(argv('gate -- sh -c "$P"')).not.toContain('echo hi')
+})
+
+test('a function forwards its call site words through "$@" and $1; unknown words stay unknown', () => {
+  expect(spelled('f() { "$@"; }; f echo hi')).toContain('echo hi')
+  expect(spelled('f() { git -C /x log "$@"; }; f -1')).toContain('git -C /x log -1')
+  expect(spelled('f() { git "$1" origin; }; f push')).toContain('git push origin')
+  expect(spelled('f() { git "$@"; }; f push origin')).toContain('git push origin')
+  expect(spelled('f() { "$@"; }; f "$X"')).toContain('?')
+  expect(spelled('f() { "$@"; }; f')).not.toContain('echo hi')
+  expect(spelled('f() { sh -c "$1"; }; f "git push"')).toContain('sh -c git push')
+})
