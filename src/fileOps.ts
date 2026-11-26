@@ -15,13 +15,12 @@ const decode64 = (text: string) => {
     return
   }
 }
-// A redirect that writes the call's output to a file: `>`, `>|` and the stdout+stderr forms `&>` and `>& file`.
-// A descriptor copy (`2>&1`, `>&2`) names no file.
-const DESCRIPTOR = /^\d+-?$/u
-const stdoutRedirect = (r: Redirect) =>
-  (r.op.includes('>') || r.op === '&>') &&
-  (r.fd === undefined || r.fd === '1') &&
-  !DESCRIPTOR.test(r.target?.value ?? '')
+// A redirect that writes a file: `>`, `>|`, `<>`, `&>` and the stdout+stderr form `>& file`. A descriptor copy or
+// close (`2>&1`, `>&2`, `>&-`) names no file.
+const DESCRIPTOR = /^(?:\d+-?|-)$/u
+export const writesRedirect = (r: Redirect) =>
+  r.op.includes('>') && !(r.op === '>&' && DESCRIPTOR.test(r.target?.value ?? ''))
+const stdoutRedirect = (r: Redirect) => writesRedirect(r) && (r.fd === undefined || r.fd === '1')
 // `>>` and `&>>` add to what the file holds.
 const appending = (r: Redirect) => r.op === '>>' || r.op === '&>>'
 // `tee -a` adds to each file rather than replacing it.

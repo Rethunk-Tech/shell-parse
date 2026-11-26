@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test'
 import { ansiC } from '../src/ansi.ts'
+import { writesRedirect } from '../src/fileOps.ts'
 import { fdExec } from '../src/runners.ts'
 import { recipesOf, selectsWorkspace, workspacePatterns } from '../src/scriptFile.ts'
 import { commandsOf, completeAsync, scriptOf, scriptOfAsync } from '../src/shell.ts'
@@ -373,6 +374,24 @@ test('a script an env -C wrapper runs resolves its relative paths from that dire
   expect(cwdOfRm("env -C /d sh -c 'rm x'")).toBe('/d')
   expect(cwdOfRm("env --chdir=/d bash -c 'rm x'")).toBe('/d')
   expect(cwdOfRm("env FOO=1 sh -c 'rm x'")).toBe('/s')
+})
+
+test('writesRedirect is true for a file written, false for a descriptor copy or close', () => {
+  const writes = (cmd: string) => calls(cmd)[0]?.redirects.map(writesRedirect)
+  for (const c of [
+    'echo x > f',
+    'echo x >> f',
+    'echo x >| f',
+    'echo x &> f',
+    'echo x >& f',
+    'echo x 2> f',
+    'echo x <> f',
+  ]) {
+    expect([c, writes(c)]).toEqual([c, [true]])
+  }
+  for (const c of ['echo x 2>&1', 'echo x >&2', 'echo x >&-', 'echo x 2>&-', 'echo x < f']) {
+    expect([c, writes(c)]).toEqual([c, [false]])
+  }
 })
 
 test('a command runner runs the command after its own words, so every guard reads it', () => {
