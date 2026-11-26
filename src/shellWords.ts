@@ -435,20 +435,20 @@ const GIT_VALUE_OPTS = new Set([
   '--namespace',
   '--config-env',
 ])
+const RGIT_VALUE_OPTS = new Set(['-C'])
 export const gitVerb = (call: Call) => {
-  if (call.name === 'rgit') {
-    return { verb: call.argv[1]?.value, at: 1 }
-  }
-  if (call.name !== 'git') {
+  if (call.name !== 'git' && call.name !== 'rgit') {
     return
   }
+  // rgit's globals are `--json` and `-C DIR`; git's are GIT_VALUE_OPTS.
+  const valueOpts = call.name === 'git' ? GIT_VALUE_OPTS : RGIT_VALUE_OPTS
   let at = 1
   while (at < call.argv.length) {
     const v = call.argv[at]?.value
     if (v === undefined || !v.startsWith('-')) {
       return { verb: v, at }
     }
-    at += GIT_VALUE_OPTS.has(v) ? 2 : 1
+    at += valueOpts.has(v) ? 2 : 1
   }
   return { verb: undefined, at }
 }

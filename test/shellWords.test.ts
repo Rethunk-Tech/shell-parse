@@ -203,6 +203,14 @@ test('gitVerb skips git global options; scriptFileOf names a shell file, not bas
   expect(gitVerb(asCall([wd('echo')]))).toBeUndefined()
   expect(gitVerb(asCall([wd('git')]))).toEqual({ verb: undefined, at: 1 })
   expect(gitVerb(asCall([wd('rgit'), wd('commit')]))).toEqual({ verb: 'commit', at: 1 })
+  expect(gitVerb(asCall([wd('rgit'), wd('-C'), wd('x'), wd('land')]))).toEqual({
+    verb: 'land',
+    at: 3,
+  })
+  expect(gitVerb(asCall([wd('rgit'), wd('--json'), wd('-C'), wd('x'), wd('commit')]))).toEqual({
+    verb: 'commit',
+    at: 4,
+  })
   expect(
     gitVerb(
       asCall([
