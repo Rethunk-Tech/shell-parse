@@ -35,8 +35,8 @@ const runnerWords = (args: Word[], from: number) => {
   return args.slice(i)
 }
 const SCRIPT_C = /^-[a-zA-Z]*c$/u
-const RUN_FLAG = new Set(['-exec', '-execdir', '-ok', '-okdir'])
-const FD_EXEC = new Set(['-x', '--exec', '-X', '--exec-batch'])
+export const RUN_FLAG = new Set(['-exec', '-execdir', '-ok', '-okdir'])
+export const FD_EXEC = new Set(['-x', '--exec', '-X', '--exec-batch'])
 // `-HX rm`: the exec flag ends a short-option cluster; `--exec=rm` carries its first word attached.
 const FD_EXEC_CLUSTER = /^-[A-Za-z]*[xX]$/u
 const FD_EXEC_ATTACHED = /^--exec(?:-batch)?=(?<first>.*)$/su

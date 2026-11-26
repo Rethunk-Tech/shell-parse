@@ -4,7 +4,7 @@ import { type Call, DYN, type Piece, type Redirect, type Script, type Word } fro
 import { output } from './shellPieces.ts'
 import { type Ctx, joinPath, nameOf, type W } from './shellWords.ts'
 
-const COPIERS = new Set(['cp', 'mv', 'ln'])
+export const COPIERS = new Set(['cp', 'mv', 'ln'])
 const DECODE = new Set(['-d', '-D', '--decode'])
 const WHITESPACE = /\s+/gu
 const decode64 = (text: string) => {
