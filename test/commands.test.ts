@@ -784,3 +784,14 @@ test('a word the shell splits or brace-expands says so; a quoted or plain one do
   expect(calls('x=\'a b\'; "$x"')[1]?.argv[0]?.splits).toBe(false)
   expect(calls('x=a; $x')[1]?.argv[0]?.splits).toBe(false)
 })
+
+test('a Python file run through uv is not read as a shell script', () => {
+  const python = 'def f(x):\n    return {x: 1}\n'
+  expect(withFiles('uv run --no-project tmp/x.py', { '/s/tmp/x.py': python })).toEqual(['tmp/x.py'])
+  expect(withFiles('tmp/x.sh', { '/s/tmp/x.sh': 'git push origin main' })).toContain(
+    'git push origin main',
+  )
+  expect(withFiles('uv run tmp/x.sh', { '/s/tmp/x.sh': 'git push origin main' })).toContain(
+    'git push origin main',
+  )
+})

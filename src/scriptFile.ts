@@ -16,9 +16,14 @@ const isBinary = (text: string) =>
     return code === 0xff_fd || code === 0x7f || (code < 0x20 && !TEXT_CONTROLS.has(code))
   })
 
+// `uv run x.py` runs the file with Python, whatever its text holds.
+const PYTHON_FILE = /\.pyw?$/u
 // The file a call named by a path runs, as an absolute path.
 export const execFileOf = (call: Call, cwd: string | undefined) => {
   const name = call.argv[0]?.value
+  if (name !== undefined && PYTHON_FILE.test(name) && call.wrappers.some((w) => w.name === 'uv')) {
+    return
+  }
   return name?.includes('/') === true && !SHELLS.has(call.name)
     ? joinPath(call.cwd ?? cwd, name)
     : undefined
