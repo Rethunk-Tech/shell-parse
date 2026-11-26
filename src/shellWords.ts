@@ -3,6 +3,7 @@
 
 import { ansiC } from './ansi.ts'
 import { evaluated, evaluatedClause } from './shellEval.ts'
+import { knownFields, splits } from './shellFields.ts'
 import {
   type Call,
   charIndex,
@@ -74,6 +75,8 @@ interface Val {
   subst: boolean
   // The word is several words once the shell splits or brace-expands it.
   splits?: boolean
+  // What a variable of known value splits into at the default IFS: a command line the walk can read.
+  fields?: string[]
 }
 
 const LINE_CONT = /\\\n/gu
@@ -145,6 +148,7 @@ const joined = (vals: Val[]): Val => ({
   expands: vals.some((v) => v.expands),
   subst: vals.some((v) => v.subst),
   splits: vals.some((v) => v.splits),
+  fields: vals.length === 1 ? vals[0]?.fields : undefined,
 })
 const substCtx = (ctx: Ctx): Ctx => ({
   ...ctx,
@@ -172,11 +176,6 @@ const tilde = (w: W, text: string) => {
   const home = w.opts.home
   return home !== undefined && (text === '~' || text.startsWith('~/')) ? home + text.slice(1) : text
 }
-// Default IFS: a character it names makes an unquoted variable several words, so an IFS passed as the
-// default splits as the default does.
-const DEFAULT_IFS = ' \t\n'
-const splits = (text: string, ifs: string | undefined) =>
-  [...text].some((ch) => (ifs ?? DEFAULT_IFS).includes(ch))
 // `${BASH_SOURCE[0]}` is the script's own path, like $0 and $BASH_SOURCE.
 const isSourceZero = (p: Node) => {
   const parts = many(one(p, 'Index'), 'Parts')
@@ -201,8 +200,9 @@ const param = (w: W, ctx: Ctx, p: Node, quoted: boolean): Val => {
   const name = isSourceZero(p) ? 'BASH_SOURCE' : (str(one(p, 'Param'), 'Value') ?? '')
   const text = name === '!' ? LAST_JOB : (ctx.scope.env.get(name) ?? DYN)
   // An unquoted variable splits into words at the IFS in effect.
-  if (!quoted && splits(text, ctx.scope.env.get('IFS'))) {
-    return { ...dyn(false), splits: true }
+  const ifs = ctx.scope.env.get('IFS')
+  if (!quoted && splits(text, ifs)) {
+    return { ...dyn(false), splits: true, fields: knownFields(text, ifs) }
   }
   return { text, expands: true, subst: false }
 }

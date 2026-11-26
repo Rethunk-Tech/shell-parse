@@ -7,6 +7,7 @@ import { aliasText, defineAliases } from './shellAlias.ts'
 import { completing } from './shellComplete.ts'
 import { evaluated, evaluatedNames, READ_VALUES, READS } from './shellEval.ts'
 import { bindNames, callFunction, setsAllexport } from './shellExport.ts'
+import { fieldsOf } from './shellFields.ts'
 import {
   BODY_LISTS,
   type Call,
@@ -204,7 +205,7 @@ const bindAll = (w: W, ctx: Ctx, n: Node, assigns: Map<string, string>): undefin
 }
 const callExpr = (w: W, ctx: Ctx, cmd: Node, own: Redirect[]) => {
   const assigns = assignsOf(w, ctx, many(cmd, 'Assigns'))
-  const words = many(cmd, 'Args').map((a) => word(w, ctx, a))
+  const words = many(cmd, 'Args').flatMap((a) => fieldsOf(word(w, ctx, a)))
   if (words.length === 0) {
     return bindAll(w, ctx, cmd, assigns)
   }
@@ -268,8 +269,7 @@ const builtin = (w: W, ctx: Ctx, call: Call) => {
       ctx.scope.exported.delete(a.value ?? '')
     }
   }
-} // The script a shell call runs: its -c string, a script file read from disk, else what it reads on
-// stdin; eval's arguments.
+} // The script a shell call runs: its -c string, a script file, else its stdin; eval's arguments.
 const scriptRun = (w: W, call: Call, own: Redirect[], ctx: Ctx): Piece | undefined => {
   const run = fileScriptOf(w, call)
   if (run) {

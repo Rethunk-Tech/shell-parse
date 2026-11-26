@@ -151,6 +151,8 @@ export interface Word {
   subst: boolean
   // An unquoted brace list or variable the shell turns into several words.
   splits?: boolean
+  // What a variable of known value splits into at the default IFS.
+  fields?: string[]
   start: number | undefined
   end: number | undefined
   raw: string

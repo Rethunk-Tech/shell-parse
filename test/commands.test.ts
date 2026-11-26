@@ -707,16 +707,19 @@ test('an unquoted brace list or a variable that splits is words no one can name;
   expect(spelled('{git,stash}')).toEqual(['?'])
   expect(spelled('git {reset,--hard}')).toEqual(['git ?'])
   expect(spelled('echo "{a,b}" \'{a,b}\'')).toEqual(['echo {a,b} {a,b}'])
-  expect(spelled("x='/tmp/a /home/u'; rm -rf $x")).toContain('rm -rf ?')
+  expect(spelled("x='/tmp/a /home/u'; rm -rf $x")).toContain('rm -rf /tmp/a /home/u')
+  expect(spelled('x="$(echo a b)"; rm -rf $x')).toContain('rm -rf ?')
   expect(spelled('x=\'a b\'; echo "$x"')).toContain('echo a b')
   expect(spelled('IFS=,; x=git,reset,--hard; $x')).toContain('?')
   expect(spelled('x=a; echo $x')).toContain('echo a')
 })
 
 test('a local, declare or typeset in a function keeps its value to that call', () => {
-  expect(spelled("f() { local IFS=,; }; f; x='git stash'; $x")).toContain('?')
-  expect(spelled("f() { declare IFS=,; }; f; x='git stash'; $x")).toContain('?')
-  expect(spelled("f() { typeset -x IFS=,; }; f; x='git stash'; echo $x")).toContain('echo ?')
+  expect(spelled("f() { local IFS=,; }; f; x='git stash'; $x")).toContain('git stash')
+  expect(spelled("f() { declare IFS=,; }; f; x='git stash'; $x")).toContain('git stash')
+  expect(spelled("f() { typeset -x IFS=,; }; f; x='git stash'; echo $x")).toContain(
+    'echo git stash',
+  )
   // The caller's own value comes back; inside the call the local one holds.
   expect(spelled('x=a; f() { local x=b; echo $x; }; f; echo $x').slice(-2)).toEqual([
     'echo b',
@@ -780,7 +783,9 @@ test('a word the shell splits or brace-expands says so; a quoted or plain one do
   const first = (c: string) => calls(c)[0]?.argv[0]?.splits
   expect(first('{git,stash}')).toBe(true)
   expect(first("x='a b'; $x")).toBeUndefined()
-  expect(calls("x='a b'; $x")[1]?.argv[0]?.splits).toBe(true)
+  expect(calls('IFS=,; x=a,b; $x').at(-1)?.argv[0]?.splits).toBe(true)
+  // A value the walk knows is read as the words it splits into.
+  expect(calls("x='a b'; $x")[1]?.argv.map((a) => a.value)).toEqual(['a', 'b'])
   expect(calls('x=\'a b\'; "$x"')[1]?.argv[0]?.splits).toBe(false)
   expect(calls('x=a; $x')[1]?.argv[0]?.splits).toBe(false)
 })
@@ -794,4 +799,24 @@ test('a Python file run through uv is not read as a shell script', () => {
   expect(withFiles('uv run tmp/x.sh', { '/s/tmp/x.sh': 'git push origin main' })).toContain(
     'git push origin main',
   )
+})
+
+test('a variable of known value is the command line it holds, a loop variable over literals included', () => {
+  const wordsOf = (c: string) => calls(c).map((x) => x.argv.map((a) => a.value))
+  expect(wordsOf('P="docker exec -i db psql"; $P -c "select 1"').at(-1)).toEqual([
+    'docker',
+    'exec',
+    '-i',
+    'db',
+    'psql',
+    '-c',
+    'select 1',
+  ])
+  expect(wordsOf('for c in "gate --fuzz" "gate -x"; do $c; done')).toEqual([
+    ['gate', '--fuzz'],
+    ['gate', '-x'],
+  ])
+  // An IFS of its own, or a value only the run knows, stays unread.
+  expect(calls('IFS=,; x=a,b; $x').at(-1)?.argv[0]?.value).toBeUndefined()
+  expect(calls('read P; $P').at(-1)?.argv[0]?.value).toBeUndefined()
 })
