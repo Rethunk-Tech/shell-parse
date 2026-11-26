@@ -1,6 +1,5 @@
 // A Bash command as shfmt (mvdan/sh) parses it, read as the calls a shell would run. No engine imports
 // and no spawning: the caller runs `shfmt --to-json` and passes each parse in.
-
 import { recordFileOps } from './fileOps.ts'
 import { runnerPieces } from './runners.ts'
 import { fileScriptOf } from './scriptFile.ts'
@@ -227,12 +226,13 @@ const callExpr = (w: W, ctx: Ctx, cmd: Node, own: Redirect[]) => {
       via: ctx.via,
       outer,
       runs: scriptRuns(call),
+      cwd: call.cwd,
       // eval runs in this shell; every other script runs in a child process.
       assigns: call.name === 'eval' ? undefined : assigns,
     })
   }
   for (const piece of runnerPieces(call)) {
-    nest(w, ctx, piece, { sameShell: false, via: call.name, outer })
+    nest(w, ctx, piece, { sameShell: false, via: call.name, outer, cwd: call.cwd })
   }
   expand(w, ctx, call, words[0])
   gitAlias(w, ctx, call)
@@ -308,6 +308,7 @@ const nest = (
     outer = ctx.outer,
     runs,
     assigns,
+    cwd = ctx.scope.cwd,
   }: {
     sameShell: boolean
     via: string | undefined
@@ -316,6 +317,7 @@ const nest = (
     runs?: 'program' | 'source'
     // The call's prefix assignments: they reach the child process, unexported names in the parent do not.
     assigns?: Map<string, string>
+    cwd?: string | undefined
   },
 ) => {
   if (ctx.depth >= MAX_DEPTH) {
@@ -327,9 +329,10 @@ const nest = (
     return
   }
   const scope = sameShell ? ctx.scope : cloneScope(ctx.scope)
-  // A child process gets the exported names only; the call's prefix assignments reach that one process.
+  // A child process gets the exported names only and starts in cwd (`env -C` moves it); the call's prefix assignments reach it.
   if (!sameShell) {
     scope.env = new Map(exportedEnv(ctx.scope))
+    scope.cwd = cwd
   }
   for (const [k, v] of assigns ?? []) {
     scope.env.set(k, v)

@@ -368,6 +368,13 @@ test('env -C dir runs the script from dir', () => {
   expect(run('env -C sub ./ship.sh', '/s/ship.sh')).toEqual(['./ship.sh'])
 })
 
+test('a script an env -C wrapper runs resolves its relative paths from that directory', () => {
+  const cwdOfRm = (cmd: string) => calls(cmd).find((c) => c.name === 'rm')?.cwd
+  expect(cwdOfRm("env -C /d sh -c 'rm x'")).toBe('/d')
+  expect(cwdOfRm("env --chdir=/d bash -c 'rm x'")).toBe('/d')
+  expect(cwdOfRm("env FOO=1 sh -c 'rm x'")).toBe('/s')
+})
+
 test('a command runner runs the command after its own words, so every guard reads it', () => {
   const runners = [
     'uv run',
