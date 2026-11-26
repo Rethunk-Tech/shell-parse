@@ -861,3 +861,14 @@ test('a function forwards its call site words through "$@" and $1; unknown words
   expect(spelled('f() { "$@"; }; f')).not.toContain('echo hi')
   expect(spelled('f() { sh -c "$1"; }; f "git push"')).toContain('sh -c git push')
 })
+
+test('cd under CDPATH, pushd/popd by index and cd - leave the directory unknown; a plain cd still tracks it', () => {
+  const cwdOf = (command: string) => calls(command).at(-1)?.cwd
+  expect(cwdOf('cd /v/w && CDPATH=/u cd g && rm x')).toBeUndefined()
+  expect(cwdOf('cd /v/w && export CDPATH=/u && cd g && rm x')).toBeUndefined()
+  expect(cwdOf('pushd /a && pushd /b && pushd +1 && rm x')).toBeUndefined()
+  expect(cwdOf('pushd /a && pushd -1 && rm x')).toBeUndefined()
+  expect(cwdOf('cd /v/w && cd g && rm x')).toBe('/v/w/g')
+  expect(cwdOf('cd /v/w && CDPATH=/u cd ./g && rm x')).toBe('/v/w/g')
+  expect(cwdOf('cd /v/w && CDPATH=/u cd /abs && rm x')).toBe('/abs')
+})

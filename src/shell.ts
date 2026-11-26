@@ -25,6 +25,7 @@ import {
   type WalkOptions,
   type Word,
 } from './shellNodes.ts'
+import { cdTo, isCdFlag } from './shellPath.ts'
 import {
   bindOwnPath,
   callOf,
@@ -40,7 +41,6 @@ import {
   cloneScope,
   gitCommand,
   gitVerb,
-  joinPath,
   peel,
   range,
   readsStdin,
@@ -245,10 +245,8 @@ const builtin = (w: W, ctx: Ctx, call: Call) => {
   const args = call.argv.slice(1)
   evaluatedNames(w, ctx, call)
   if (call.name === 'cd' || call.name === 'pushd') {
-    const [target] = args.filter((a) => !(a.value?.startsWith('-') && a.value !== '-'))
-    const value = target ? target.value : w.opts.home
-    ctx.scope.cwd =
-      value === undefined || value === '-' ? undefined : joinPath(ctx.scope.cwd, value)
+    const [target] = args.filter((a) => !isCdFlag(a.value))
+    ctx.scope.cwd = cdTo(ctx.scope, call.assigns, target ? target.value : w.opts.home)
   } else if (call.name === 'popd') {
     ctx.scope.cwd = undefined
   } else if (READS.has(call.name)) {
