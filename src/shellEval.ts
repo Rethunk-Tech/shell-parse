@@ -50,7 +50,7 @@ export const evaluatedClause = (w: W, ctx: Ctx, node: Node) =>
   node.Type === 'TestClause' ? evaluatedTest(w, ctx, one(node, 'X')) : evaluated(w, ctx, node)
 
 export const READS = new Set(['read', 'mapfile', 'readarray'])
-export const READ_VALUES = new Set(['-d', '-i', '-n', '-N', '-p', '-t', '-u'])
+export const READ_VALUES = new Set(['-C', '-c', '-d', '-i', '-n', '-N', '-p', '-t', '-u'])
 // The names read and printf -v assign are evaluated for the subscripts they hold.
 export const evaluatedNames = (w: W, ctx: Ctx, call: Call) => {
   const args = call.argv.slice(1)

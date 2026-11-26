@@ -740,6 +740,27 @@ test('env -S takes its script attached, with option letters before it', () => {
   }
 })
 
+test('env -iS and -vS take the script from the next word', () => {
+  for (const c of ["env -iS 'git reset --hard'", "env -vS 'git reset --hard'"]) {
+    expect([c, spelled(c).includes('git reset --hard')]).toEqual([c, true])
+  }
+})
+
+test('watch without -x runs its command words through sh -c', () => {
+  expect(spelled("watch 'git reset --hard'")).toContain('git reset --hard')
+  expect(spelled("watch -n 1 -- 'git reset --hard'")).toContain('git reset --hard')
+  expect(spelled('watch -n 1 date')).not.toContain('git reset --hard')
+})
+
+test('mapfile and readarray -C run the callback as shell code', () => {
+  for (const c of [
+    "mapfile -C 'git reset --hard' -c 1 < /etc/hostname",
+    "readarray -C 'git reset --hard' -c 1 < /etc/hostname",
+  ]) {
+    expect([c, spelled(c).includes('git reset --hard')]).toEqual([c, true])
+  }
+})
+
 test('an alias ending in a blank expands the next word; a value only the run knows is unknown; hash -p binds a name', () => {
   expect(spelled("alias k='git ' r='reset --hard'\nk r")).toContain('git reset --hard')
   expect(calls('alias x="$(echo git stash)"\nx').at(-1)?.argv[0]?.splits).toBe(true)

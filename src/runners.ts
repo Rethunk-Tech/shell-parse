@@ -68,10 +68,16 @@ const attachedExec = (words: Word[]) =>
   })
 // env's -S takes its script attached too: `-S'git stash'`, `-vS'git stash'`.
 const ENV_SPLIT = /^-[iv0]*S(?<script>.+)$/su
+// `-iS` / `-vS` with the script in the next word.
+const ENV_SPLIT_CLUSTER = /^-[iv0]+S$/u
 const optionValue = (words: Word[], names: Set<string>) =>
   words.flatMap((a, i) => {
     const v = a.value ?? ''
     const attached = names.has('-S') ? ENV_SPLIT.exec(v)?.groups?.script : undefined
+    const next = words[i + 1]
+    if (names.has('-S') && ENV_SPLIT_CLUSTER.test(v) && next) {
+      return [next.script]
+    }
     if (attached !== undefined) {
       return [{ text: attached, base: undefined }]
     }
@@ -79,7 +85,6 @@ const optionValue = (words: Word[], names: Set<string>) =>
     if (eq > 0 && names.has(v.slice(0, eq))) {
       return [{ text: v.slice(eq + 1), base: undefined }]
     }
-    const next = words[i + 1]
     return names.has(v) && next ? [next.script] : []
   })
 // The scripts a git subcommand hands a shell: foreach, rebase --exec, bisect run, filter-branch filters, a
@@ -293,6 +298,15 @@ const wrapperPieces = (w: Wrapper, command: Word[]): Piece[] => {
   if (w.name === 'flock') {
     return optionValue(w.words, new Set(['-c', '--command']))
   }
+  if (w.name === 'watch' && !w.words.some((a) => a.value === '-x' || a.value === '--exec')) {
+    // Without -x, watch hands its command words to `sh -c`.
+    const [only] = command
+    return [
+      command.length === 1 && only
+        ? only.script
+        : { text: command.map((a) => a.value ?? a.raw).join(' '), base: undefined },
+    ]
+  }
   return w.name === 'pnpm' ? pnpmShellPieces(w.words, command) : []
 }
 export const runnerPieces = (call: Call): Piece[] => {
@@ -302,6 +316,9 @@ export const runnerPieces = (call: Call): Piece[] => {
   pieces.push(...call.wrappers.flatMap((w) => wrapperPieces(w, call.argv)))
   if (call.name === 'env') {
     pieces.push(...optionValue(args, new Set(['-S', '--split-string'])))
+  } else if (call.name === 'mapfile' || call.name === 'readarray') {
+    // -C CALLBACK is evaluated as shell code every -c lines.
+    pieces.push(...optionValue(args, new Set(['-C'])))
   } else if (call.name === 'find') {
     args.forEach((a, i) => {
       if (RUN_FLAG.has(a.value ?? '')) {
