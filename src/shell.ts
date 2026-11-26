@@ -6,7 +6,7 @@ import { fileScriptOf } from './scriptFile.ts'
 import { aliasText, defineAliases } from './shellAlias.ts'
 import { completing } from './shellComplete.ts'
 import { evaluated, evaluatedNames, READ_VALUES, READS } from './shellEval.ts'
-import { bindNames, callFunction, setsAllexport } from './shellExport.ts'
+import { bindNames, callFunction, declareFunction, setsAllexport } from './shellExport.ts'
 import { fieldsOf } from './shellFields.ts'
 import {
   BODY_LISTS,
@@ -128,15 +128,6 @@ const forClause = (w: W, ctx: Ctx, cmd: Node) => {
     stmtsIn(w, bodyCtx, body)
   }
 }
-const funcDecl = (w: W, ctx: Ctx, cmd: Node) => {
-  const name = str(one(cmd, 'Name'), 'Value') ?? ''
-  const body = one(cmd, 'Body')
-  if (body) {
-    ctx.scope.funcs.set(name, { body, src: ctx.src })
-    const expanding = new Set([...ctx.expanding, name])
-    stmt(w, { ...ctx, scope: cloneScope(ctx.scope), expanding }, body)
-  }
-}
 const compound = (w: W, ctx: Ctx, cmd: Node) => {
   switch (cmd.Type) {
     case 'BinaryCmd':
@@ -173,7 +164,7 @@ const compound = (w: W, ctx: Ctx, cmd: Node) => {
       }
       break
     case 'FuncDecl':
-      funcDecl(w, ctx, cmd)
+      declareFunction(w, ctx, cmd)
       break
     case 'TimeClause':
     case 'CoprocClause':

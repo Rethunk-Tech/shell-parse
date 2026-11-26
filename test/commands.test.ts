@@ -853,7 +853,9 @@ test('gate -- sh -c "$P" hands the child shell the value P holds; an unknown P s
 })
 
 test('a function forwards its call site words through "$@" and $1; unknown words stay unknown', () => {
+  expect(spelled('f() { "$@"; }; f echo hi')).not.toContain('?')
   expect(spelled('f() { "$@"; }; f echo hi')).toContain('echo hi')
+  expect(spelled('f() { "$@"; }')).toContain('?')
   expect(spelled('f() { git -C /x log "$@"; }; f -1')).toContain('git -C /x log -1')
   expect(spelled('f() { git "$1" origin; }; f push')).toContain('git push origin')
   expect(spelled('f() { git "$@"; }; f push origin')).toContain('git push origin')

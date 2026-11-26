@@ -1,7 +1,7 @@
 // Which shell variables reach a child's environment: export, an -x flag on declare, typeset or
 // local, and set -a mark them; and which names a function's local keeps to its call. No engine imports.
-import { DYN, many, type Node, one, str, type Word } from './shellNodes.ts'
-import { type Ctx, type Scope, type W, word } from './shellWords.ts'
+import { type Call, DYN, many, type Node, one, str, type Word } from './shellNodes.ts'
+import { type Ctx, cloneScope, type Scope, type W, word } from './shellWords.ts'
 
 const EXPORT_FLAG = /^-\w*x/u
 const ALLEXPORT_FLAG = /^-\w*a/u
@@ -93,6 +93,30 @@ export const bindNames = (w: W, ctx: Ctx, n: Node, assigns: Map<string, string>)
   markExported(w, ctx, n, assigns.keys())
 }
 
+const POSITIONAL_REF = /\$\{?[@*1-9]/u
+// The calls a function's definition walk produced, read with no call site: those that name a positional
+// parameter are unknowns until a call supplies its words.
+const definitionCalls = new WeakMap<Node, Call[]>()
+export const declareFunction = (w: W, ctx: Ctx, cmd: Node) => {
+  const name = str(one(cmd, 'Name'), 'Value') ?? ''
+  const body = one(cmd, 'Body')
+  if (body) {
+    ctx.scope.funcs.set(name, { body, src: ctx.src })
+    const before = w.out.calls.length
+    const expanding = new Set([...ctx.expanding, name])
+    w.stmt({ ...ctx, scope: cloneScope(ctx.scope), expanding }, body)
+    definitionCalls.set(body, w.out.calls.slice(before))
+  }
+}
+// A call that runs the function reads its positional parameters from the call site, which replaces the
+// definition's guesses.
+const retireDefinition = (w: W, body: Node) => {
+  const dead = new Set(
+    (definitionCalls.get(body) ?? []).filter((c) => c.argv.some((a) => POSITIONAL_REF.test(a.raw))),
+  )
+  const kept = w.out.calls.filter((c) => !dead.has(c))
+  w.out.calls.splice(0, w.out.calls.length, ...kept)
+}
 // A function runs in its caller's shell, and the names its locals shadow come back when it returns.
 export const callFunction = (w: W, ctx: Ctx, body: Node, argv: Word[]) => {
   const { scope } = ctx
@@ -103,6 +127,7 @@ export const callFunction = (w: W, ctx: Ctx, body: Node, argv: Word[]) => {
   scope.positional = argv.slice(1).map((a) => a.value ?? DYN)
   w.stmt({ ...ctx, depth: ctx.depth + 1 }, body)
   scope.positional = callerArgs
+  retireDefinition(w, body)
   for (const [name, { value, exported }] of saved) {
     if (value === undefined) {
       scope.env.delete(name)
