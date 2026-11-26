@@ -526,6 +526,11 @@ test('shellFlags, readsStdin, aliases, bash < file and recorded script writes', 
     dashC: false,
     dashS: false,
   })
+  expect(shellFlags([wd('-euo'), wd('pipefail')])).toEqual({ i: 2, dashC: false, dashS: false })
+  expect(scriptFileOf(asCall([wd('sh'), wd('-')], { cwd: '/s' }), '/s')).toBeUndefined()
+  expect(
+    scriptFileOf(asCall([wd('bash'), wd('-euo'), wd('pipefail')], { cwd: '/s' }), '/s'),
+  ).toBeUndefined()
   expect(shellFlags([wd('--'), wd('-c')])).toEqual({ i: 1, dashC: false, dashS: false })
   expect(shellFlags([wd('--login'), wd('script.sh')])).toEqual({
     i: 1,

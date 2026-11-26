@@ -454,8 +454,8 @@ export const gitVerb = (call: Call) => {
 }
 
 const SHELL_FLAG = /^(?:[-+][A-Za-z]+|--.*)$/u
-// Options whose value is the next word: `-o errexit`, `--rcfile FILE`.
-const SET_OPTION = new Set(['-o', '+o', '-O', '+O', '--rcfile', '--init-file'])
+// Options whose value is the next word: `--rcfile FILE`, and a short cluster ending in o or O (`-o errexit`, `-euo pipefail`).
+const SET_OPTION = new Set(['--rcfile', '--init-file'])
 const STDIN_FILES = new Set(['/dev/stdin', '/dev/fd/0', '/proc/self/fd/0'])
 // A shell's leading flags: where its operands start, and whether they said -c or -s.
 export const shellFlags = (args: Word[]) => {
@@ -464,7 +464,7 @@ export const shellFlags = (args: Word[]) => {
   let dashS = false
   while (i < args.length && SHELL_FLAG.test(args[i]?.value ?? '')) {
     const v = args[i]?.value ?? ''
-    i += SET_OPTION.has(v) ? 2 : 1
+    i += SET_OPTION.has(v) || /^[-+][A-Za-z]*[oO]$/u.test(v) ? 2 : 1
     if (v === '--') {
       break
     }
@@ -485,14 +485,14 @@ export const SHELLS = new Set(['bash', 'sh', 'zsh', 'dash', 'ksh', 'mksh', 'ash'
 const NO_FILE = /^-[a-z]*[cn]/u
 // The script file a shell or source call runs, as an absolute path, when its name is literal.
 export const scriptFileOf = (call: Call, cwd: string | undefined) => {
-  // The operands start past the flags, a `--rcfile` value among them.
   const { i, dashS } = shellFlags(call.argv.slice(1))
   const at = i + 1
   const fed = call.redirects.find((r) => r.op === '<' && (r.fd === undefined || r.fd === '0'))
-  const name = at >= call.argv.length && SHELLS.has(call.name) ? fed?.target : call.argv[at]
+  const operand = at >= call.argv.length && SHELLS.has(call.name) ? fed?.target : call.argv[at]
+  const name = operand?.value === '-' ? undefined : operand
   const runs = SHELLS.has(call.name) || call.name === 'source' || call.name === '.'
   const pre = call.argv.slice(1, at)
-  // `bash < file` runs the file as `bash file` does; with -s the operands are positional parameters.
+  // `bash < file` runs the file as `bash file` does; a lone `-` is stdin; with -s the operands are positional parameters.
   if (!runs || dashS || name?.value === undefined || pre.some((a) => NO_FILE.test(a.value ?? ''))) {
     return
   }
