@@ -111,9 +111,9 @@ export const declareFunction = (w: W, ctx: Ctx, cmd: Node) => {
 // A call that runs the function reads its positional parameters from the call site, which replaces the
 // definition's guesses.
 const retireDefinition = (w: W, body: Node) => {
-  const dead = new Set(
-    (definitionCalls.get(body) ?? []).filter((c) => c.argv.some((a) => POSITIONAL_REF.test(a.raw))),
-  )
+  const defined = definitionCalls.get(body) ?? []
+  definitionCalls.delete(body)
+  const dead = new Set(defined.filter((c) => c.argv.some((a) => POSITIONAL_REF.test(a.raw))))
   if (dead.size === 0) {
     return
   }
