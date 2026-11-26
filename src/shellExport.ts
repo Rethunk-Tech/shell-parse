@@ -114,6 +114,9 @@ const retireDefinition = (w: W, body: Node) => {
   const dead = new Set(
     (definitionCalls.get(body) ?? []).filter((c) => c.argv.some((a) => POSITIONAL_REF.test(a.raw))),
   )
+  if (dead.size === 0) {
+    return
+  }
   const kept = w.out.calls.filter((c) => !dead.has(c))
   w.out.calls.splice(0, w.out.calls.length, ...kept)
 }
