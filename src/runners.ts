@@ -309,6 +309,13 @@ const wrapperPieces = (w: Wrapper, command: Word[]): Piece[] => {
   }
   return w.name === 'pnpm' ? pnpmShellPieces(w.words, command) : []
 }
+// `mapfile -Ccmd`: the callback attached to the flag.
+const attachedCallback = (args: Word[]): Piece[] =>
+  args.flatMap((a) =>
+    a.value?.startsWith('-C') && a.value.length > 2
+      ? [{ text: a.value.slice(2), base: undefined }]
+      : [],
+  )
 export const runnerPieces = (call: Call): Piece[] => {
   const args = call.argv.slice(1)
   const values = args.map((a) => a.value)
@@ -318,7 +325,7 @@ export const runnerPieces = (call: Call): Piece[] => {
     pieces.push(...optionValue(args, new Set(['-S', '--split-string'])))
   } else if (call.name === 'mapfile' || call.name === 'readarray') {
     // -C CALLBACK is evaluated as shell code every -c lines.
-    pieces.push(...optionValue(args, new Set(['-C'])))
+    pieces.push(...optionValue(args, new Set(['-C'])), ...attachedCallback(args))
   } else if (call.name === 'find') {
     args.forEach((a, i) => {
       if (RUN_FLAG.has(a.value ?? '')) {

@@ -756,6 +756,8 @@ test('mapfile and readarray -C run the callback as shell code', () => {
   for (const c of [
     "mapfile -C 'git reset --hard' -c 1 < /etc/hostname",
     "readarray -C 'git reset --hard' -c 1 < /etc/hostname",
+    "mapfile -C'git reset --hard' -c 1 < /etc/hostname",
+    "readarray -c1 -C'git reset --hard' < /etc/hostname",
   ]) {
     expect([c, spelled(c).includes('git reset --hard')]).toEqual([c, true])
   }
