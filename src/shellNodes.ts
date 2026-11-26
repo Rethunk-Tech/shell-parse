@@ -191,6 +191,8 @@ export interface Call {
   stdinArgs: boolean
   // A shell reading its script from a pipe whose producer is not a written-out echo, printf or heredoc.
   opaqueStdin: boolean
+  // The text a pipe feeds this call when its producer is a written-out echo, printf or heredoc cat.
+  fed?: Piece | undefined
   pipes: Pipe[]
   via: string | undefined
   // The script file this call's line was read from, when a file the command runs holds it.

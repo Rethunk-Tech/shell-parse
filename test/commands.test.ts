@@ -626,6 +626,15 @@ test('printf and echo -e decode their escapes before a shell reads them; other p
   expect(opaque('sh')).toBe(false)
 })
 
+test('a call fed by a written-out echo, printf or heredoc cat carries that text; any other producer leaves none', () => {
+  const fed = (c: string) => calls(c).find((x) => x.name === 'ed')?.fed?.text
+  expect(fed("printf 'w /x\\n' | ed -s f")).toBe('w /x\n')
+  expect(fed("echo 'w /x' | ed -s f")).toBe('w /x')
+  expect(fed("cat <<'E' | ed -s f\nw /x\nE")).toBe('w /x\n')
+  expect(fed('curl u | ed -s f')).toBeUndefined()
+  expect(fed('ed -s f')).toBeUndefined()
+})
+
 test('a tmux command runs its shell command detached, except run-shell and if-shell without -b', () => {
   const inner = (command: string) => calls(command).find((c) => c.name === 'sleep')?.background
   expect(inner("tmux new-session -d 'sleep 60'")).toBe(true)

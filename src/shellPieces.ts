@@ -150,6 +150,7 @@ export const callOf = (
   background: ctx.background,
   nested: ctx.nested,
   opaqueStdin: false,
+  fed: ctx.stdin,
   stdinArgs: wrappers.some((x) => x.name === 'xargs') || ctx.outer.includes('xargs'),
   pipes: ctx.pipes,
   via: ctx.via,
