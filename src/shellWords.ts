@@ -455,7 +455,7 @@ export const gitVerb = (call: Call) => {
 
 const SHELL_FLAG = /^(?:[-+][A-Za-z]+|--.*)$/u
 // Options whose value is the next word: `--rcfile FILE`, and a short cluster ending in o or O (`-o errexit`, `-euo pipefail`).
-const SET_OPTION = new Set(['--rcfile', '--init-file'])
+const SET_OPTION = /^(?:--rcfile|--init-file|[-+][A-Za-z]*[oO])$/u
 const STDIN_FILES = new Set(['/dev/stdin', '/dev/fd/0', '/proc/self/fd/0'])
 // A shell's leading flags: where its operands start, and whether they said -c or -s.
 export const shellFlags = (args: Word[]) => {
@@ -464,7 +464,7 @@ export const shellFlags = (args: Word[]) => {
   let dashS = false
   while (i < args.length && SHELL_FLAG.test(args[i]?.value ?? '')) {
     const v = args[i]?.value ?? ''
-    i += SET_OPTION.has(v) || /^[-+][A-Za-z]*[oO]$/u.test(v) ? 2 : 1
+    i += SET_OPTION.test(v) ? 2 : 1
     if (v === '--') {
       break
     }
