@@ -49,8 +49,8 @@ export interface Recipe {
   workspace?: string
   key: string
 }
-const MAKES = new Set(['make', 'gmake'])
-const NPMS = new Set(['npm', 'bun', 'pnpm', 'yarn'])
+export const MAKES = new Set(['make', 'gmake'])
+export const NPMS = new Set(['npm', 'bun', 'pnpm', 'yarn'])
 const NPM_LIFECYCLE = new Set(['test', 't', 'tst', 'start', 'stop', 'restart'])
 const recipe = (
   runner: Runner,
